@@ -90,7 +90,7 @@ const Manufacturing: React.FC = () => {
       const { data: inventoryData } = await supabase!
         .from('inventory')
         .select('*')
-        .eq('product_id', productName)
+        .eq('product_name', productName)
         .eq('branch_id', user?.branch_id)
         .single();
 
@@ -101,7 +101,7 @@ const Manufacturing: React.FC = () => {
         await supabase!
           .from('inventory')
           .insert({
-            product_id: productName,
+            product_name: productName,
             branch_id: user?.branch_id,
             quantity: parseInt(quantity),
             last_updated: new Date().toISOString()
@@ -114,26 +114,29 @@ const Manufacturing: React.FC = () => {
             quantity: inventoryData.quantity + parseInt(quantity),
             last_updated: new Date().toISOString()
           })
-          .eq('product_id', productName)
+          .eq('product_name', productName)
           .eq('branch_id', user?.branch_id);
       }
 
       // Record stock movement
       console.log('Recording stock movement');
-      await supabase!
+      const { data: stockMovement, error: stockMovementError } = await supabase!
         .from('stock_movements')
         .insert({
           movement_number: `MV${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
           type: 'manufacturing',
           to_branch_id: user?.branch_id,
-          product_id: productName,
+          product_name: productName,
           quantity: parseInt(quantity),
           reference_id: orderData.id,
           reference_type: 'manufacturing_order',
-          notes: `Production: ${notes}`
-        });
-
-      console.log('Stock movement recorded successfully');
+          notes: `Production: ${notes || 'Manufactured product added to inventory'}`
+        })
+        .select()
+        .single();
+      
+      console.log('Stock movement recorded:', { data: stockMovement, error: stockMovementError });
+      if (stockMovementError) throw stockMovementError;
 
       // Reset form and refresh data
       setSelectedProduct('');
@@ -189,22 +192,20 @@ const Manufacturing: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Production Management</h1>
           <p className="text-gray-600">Record production of company-manufactured products</p>
         </div>
-        {hasPermission('manage_manufacturing') && (
-          <div className="flex space-x-3">
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-            >
-              Record New Production
-            </button>
-            <a
-              href="/expenses"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg inline-block"
-            >
-              Track Expenses
-            </a>
-          </div>
-        )}
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+          >
+            Record New Production
+          </button>
+          <a
+            href="/expenses"
+            className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg inline-block"
+          >
+            Track Expenses
+          </a>
+        </div>
       </div>
 
       {/* Production Stats */}

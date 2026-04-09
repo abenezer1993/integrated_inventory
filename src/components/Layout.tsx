@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext-debug';
 
 const Layout: React.FC = () => {
   const { user, logout, hasPermission, isAdmin, isBranchManager, isSalesStaff, isWarehouseStaff } = useAuth();
@@ -174,6 +174,9 @@ const Layout: React.FC = () => {
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-900">
                     {user?.name}
+                    <span className="px-2 py-1 text-xs font-semibold bg-red-100 text-red-800 rounded-full">
+                        ADMIN
+                      </span>
                   </p>
                   <p className="text-xs text-gray-500">{user?.email}</p>
                 </div>

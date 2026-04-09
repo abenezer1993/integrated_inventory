@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext-debug';
 
 interface Sale {
   id: string;

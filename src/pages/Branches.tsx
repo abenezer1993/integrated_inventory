@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext-debug';
 
 interface Branch {
   id: string;

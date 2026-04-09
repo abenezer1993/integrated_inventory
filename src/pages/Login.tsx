@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext-debug';
 import { useNavigate } from 'react-router-dom';
 
 const Login: React.FC = () => {
@@ -12,13 +12,19 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🔐 Login form submitted');
+    console.log('🔐 Email entered:', email);
+    console.log('🔐 Password entered:', password ? '***' : 'empty');
+    
     setLoading(true);
     setError('');
 
     try {
       await login(email, password);
+      console.log('🔐 Login function completed successfully');
       navigate('/');
     } catch (err: any) {
+      console.log('🔐 Login function failed:', err.message);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -32,6 +38,9 @@ const Login: React.FC = () => {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Sign in to Inventory System
           </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Admin access only. Only <strong>abenitak9@gmail.com</strong> is allowed to access this system.
+          </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
@@ -46,10 +55,10 @@ const Login: React.FC = () => {
                 name="email"
                 type="email"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                placeholder="abenitak9@gmail.com"
               />
             </div>
             <div>

@@ -40,70 +40,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
-    
     const checkAuth = async () => {
       try {
-        console.log('=== DEBUG AUTH CHECK START ===');
-        console.log('Supabase client:', supabase ? 'available' : 'null');
-        
         const sessionResult = await supabase?.auth.getSession();
-        console.log('Session result:', sessionResult);
         
-        const session = sessionResult?.data?.session || null;
-        console.log('Session:', session);
-        
-        if (session?.user && mounted) {
+        if (sessionResult?.data?.session?.user) {
+          const session = sessionResult.data.session;
           console.log('✅ Session found:', session.user.email);
-          console.log('✅ Session ID:', session.user.id);
-          console.log('✅ User email comparison:', session.user.email === 'abenitak9@gmail.com');
           
           if (session.user.email === 'abenitak9@gmail.com') {
-            console.log('🎯 ADMIN USER DETECTED - Setting admin role');
+            console.log('🎯 ADMIN USER SIGNED IN');
             const adminUser: User = {
               id: session.user.id,
               email: session.user.email!,
               name: 'Admin User',
               role: UserRole.ADMIN,
-              branch_id: null as any,
+              branch_id: undefined,
               created_at: new Date().toISOString(),
             };
             setUser(adminUser);
-            console.log('✅ ADMIN USER SET:', adminUser);
-            console.log('✅ Is admin:', adminUser.role === UserRole.ADMIN);
           } else {
-            console.log('❌ Not admin user, trying profile check...');
-            try {
-              const { data: profile, error: profileError } = await supabase!
-                .from('users')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
-              
-              console.log('Profile result:', profile);
-              console.log('Profile error:', profileError);
-              
-              if (profileError || !profile) {
-                console.error('❌ Profile error:', profileError);
-                setUser(null);
-              } else {
-                console.log('✅ Profile found:', profile);
-                const userData: User = {
-                  id: profile.id,
-                  email: session.user.email!,
-                  name: profile.name,
-                  role: profile.role as UserRole,
-                  branch_id: profile.branch_id,
-                  created_at: profile.created_at,
-                };
-                setUser(userData);
-                console.log('✅ USER SET:', userData);
-                console.log('✅ User role:', profile.role);
-              }
-            } catch (e) {
-              console.error('❌ Profile fetch failed:', e);
-              setUser(null);
-            }
+            console.log('❌ Not admin user');
+            const basicUser: User = {
+              id: session.user.id,
+              email: session.user.email!,
+              name: session.user.email!,
+              role: UserRole.SALES_STAFF,
+              branch_id: undefined,
+              created_at: session.user.created_at,
+            };
+            setUser(basicUser);
           }
         } else {
           console.log('❌ No session found');
@@ -113,94 +79,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('❌ Auth check error:', error);
         setUser(null);
       } finally {
-        console.log('=== DEBUG AUTH CHECK END ===');
-        if (mounted) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     };
 
-    const { data: { subscription } } = supabase?.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-        
-        console.log('🔄 Auth state change:', event);
-        console.log('🔄 Session:', session);
-        
-        if (event === 'SIGNED_IN' && session?.user && mounted) {
-          console.log('✅ User signed in:', session.user.email);
-          console.log('✅ User email comparison for sign-in:', session.user.email === 'abenitak9@gmail.com');
-          
-          if (session.user.email === 'abenitak9@gmail.com') {
-            console.log('🎯 ADMIN USER SIGNED IN - Setting admin role');
-            const adminUser: User = {
-              id: session.user.id,
-              email: session.user.email!,
-              name: 'Admin User',
-              role: UserRole.ADMIN,
-              branch_id: null as any,
-              created_at: new Date().toISOString(),
-            };
-            setUser(adminUser);
-            console.log('✅ ADMIN USER SET ON SIGN-IN:', adminUser);
-            console.log('✅ Is admin on sign-in:', adminUser.role === UserRole.ADMIN);
-          } else {
-            console.log('❌ Not admin user on sign-in, trying profile check...');
-            try {
-              const { data: profile, error } = await supabase!
-                .from('users')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
-              
-              console.log('Profile result on sign-in:', profile);
-              console.log('Profile error on sign-in:', error);
-              
-              if (error || !profile) {
-                console.error('❌ Profile fetch error:', error);
-                setUser(null);
-              } else {
-                console.log('✅ Profile found on sign-in:', profile);
-                const userData: User = {
-                  id: profile.id,
-                  email: session.user.email!,
-                  name: profile.name,
-                  role: profile.role as UserRole,
-                  branch_id: profile.branch_id,
-                  created_at: profile.created_at,
-                };
-                setUser(userData);
-                console.log('✅ USER SET ON SIGN-IN:', userData);
-                console.log('✅ User role on sign-in:', profile.role);
-              }
-            } catch (e) {
-              console.error('❌ Sign-in profile fetch failed:', e);
-              setUser(null);
-            }
-          }
-        } else if (event === 'SIGNED_OUT') {
-          console.log('❌ User signed out');
-          setUser(null);
-        }
-      }
-    ) || { data: { subscription: null } };
-
-    const timeoutId = setTimeout(() => {
-      if (mounted) {
-        checkAuth();
-      }
-    }, 1000);
-
-    return () => {
-      mounted = false;
-      clearTimeout(timeoutId);
-      subscription?.unsubscribe();
-    };
+    checkAuth();
   }, [supabase]);
 
   const login = async (email: string, password: string) => {
     try {
-      console.log('🔐 Logging in:', email);
+      console.log('🔐 Login attempt with email:', email);
+      console.log('🔐 Email validation check:', email !== 'abenitak9@gmail.com');
+      
+      // Only allow admin email to log in
+      if (email !== 'abenitak9@gmail.com') {
+        console.log('❌ EMAIL VALIDATION FAILED - BLOCKING LOGIN');
+        throw new Error('Access denied. Only admin user (abenitak9@gmail.com) is allowed to access this system.');
+      }
+      
+      console.log('✅ Email validation passed - calling Supabase');
       const { error } = await supabase!.auth.signInWithPassword({ email, password });
       if (error) throw error;
       console.log('✅ Login successful');
@@ -221,19 +118,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const hasPermission = (permission: string): boolean => {
-    console.log(`🔍 PERMISSION CHECK START: ${permission}`);
     if (!user) {
-      console.log('❌ No user for permission check');
       return false;
     }
     
-    console.log(`🔍 User object in permission check:`, user);
-    console.log(`🔍 User role: ${user.role}`);
-    console.log(`🔍 Checking permission: ${permission}`);
-    
     const permissions = {
       [UserRole.ADMIN]: [
-        'manage_users', 'manage_branches', 'manage_products', 'view_all_reports',
+        'manage_users', 'manage_branches', 'manage_products', 'manage_inventory', 'view_all_reports',
         'manage_sales', 'manage_purchases', 'manage_manufacturing', 'manage_expenses'
       ],
       [UserRole.BRANCH_MANAGER]: [
@@ -247,26 +138,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'manage_inventory', 'receive_purchases', 'manage_manufacturing', 'view_products'
       ]
     };
-
-    const userPermissions = permissions[user.role] || [];
-    console.log(`🔍 Available permissions for role ${user.role}:`, userPermissions);
     
-    const result = userPermissions.includes(permission) || false;
-    console.log(`🔍 Permission check result: ${permission} for role ${user.role} = ${result}`);
-    console.log(`🔍 PERMISSION CHECK END: ${permission}`);
-    return result;
+    const userPermissions = permissions[user.role] || [];
+    return userPermissions.includes(permission) || false;
   };
 
   const isAdmin = () => {
-    const result = user?.role === UserRole.ADMIN;
-    console.log(`🔍 Is admin check: ${user?.role} === ${UserRole.ADMIN} = ${result}`);
-    console.log(`🔍 User object:`, user);
-    return result;
+    return user?.role === UserRole.ADMIN;
   };
-  
-  const isBranchManager = () => user?.role === UserRole.BRANCH_MANAGER;
-  const isSalesStaff = () => user?.role === UserRole.SALES_STAFF;
-  const isWarehouseStaff = () => user?.role === UserRole.WAREHOUSE_STAFF;
+
+  const isBranchManager = () => {
+    return user?.role === UserRole.BRANCH_MANAGER;
+  };
+
+  const isSalesStaff = () => {
+    return user?.role === UserRole.SALES_STAFF;
+  };
+
+  const isWarehouseStaff = () => {
+    return user?.role === UserRole.WAREHOUSE_STAFF;
+  };
 
   return (
     <AuthContext.Provider value={{ 
