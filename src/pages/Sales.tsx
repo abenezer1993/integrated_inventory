@@ -4,25 +4,18 @@ import { useAuth } from '../contexts/AuthContext-debug';
 
 interface Sale {
   id: string;
-  product_id: string;
-  branch_id: string;
+  product_id: string | null;
+  manufactured_product_id: string | null;
+  branch_id: string | null;
   quantity_sold: number;
   unit_price: number;
   total_amount: number;
   customer_name: string;
   sale_date: string;
-  created_at: string;
-  updated_at: string;
-  created_by: string;
-  products: {
-    name: string;
-    sku: string;
-    unit: string;
-  };
-  branches: {
-    name: string;
-    location: string;
-  };
+  product_name: string;
+  product_sku: string;
+  product_unit: string;
+  is_manufactured: boolean;
 }
 
 interface CartItem {
@@ -49,13 +42,8 @@ const Sales: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [products, setProducts] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [showAddProduct, setShowAddProduct] = useState(false);
-  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [formData, setFormData] = useState<SalesFormData>({
     branch_id: user?.branch_id || '',
     customer_name: '',
@@ -63,6 +51,15 @@ const Sales: React.FC = () => {
     quantity: '',
     unit_price: '',
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalSales, setTotalSales] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const SALES_PER_PAGE = 10;
+  const [products, setProducts] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [showAddProduct, setShowAddProduct] = useState(false);
 
   // Simple cache to avoid repeated API calls
   const cacheRef = useRef<{ [key: string]: { data: any; timestamp: number } }>({});
@@ -89,33 +86,38 @@ const Sales: React.FC = () => {
     fetchInventory();
   }, []);
 
-  const fetchSales = async () => {
+  const fetchSales = async (page: number = 1) => {
     try {
-      // Check cache first
-      const cachedSales = getCachedData('sales');
-      if (cachedSales) {
-        setSales(cachedSales);
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase!
-        .from('sales')
-        .select(`
-          *,
-          products (name, sku, unit),
-          branches (name, location)
-        `)
-        .order('sale_date', { ascending: false });
+      setLoading(true);
+      const offset = (page - 1) * SALES_PER_PAGE;
       
-      if (error) {
+      // Fetch paginated sales
+      const { data: salesData, error: salesError } = await supabase!
+        .rpc('get_sales_paginated', { 
+          page_limit: SALES_PER_PAGE, 
+          page_offset: offset 
+        });
+      
+      // Fetch total count
+      const { data: countData, error: countError } = await supabase!
+        .rpc('get_sales_count');
+      
+      if (salesError || countError) {
+        console.error('Sales fetch error:', salesError || countError);
         setSales([]);
+        setTotalSales(0);
+        setTotalPages(1);
       } else {
-        setSales(data || []);
-        setCachedData('sales', data);
+        setSales(salesData || []);
+        setTotalSales(countData || 0);
+        setTotalPages(Math.ceil((countData || 0) / SALES_PER_PAGE));
+        setCurrentPage(page);
       }
     } catch (error) {
+      console.error('Error fetching sales:', error);
       setSales([]);
+      setTotalSales(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -123,12 +125,54 @@ const Sales: React.FC = () => {
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase!
+      console.log('=== FETCHING PRODUCTS FOR SALES ===');
+      
+      // Fetch purchased products
+      console.log('Fetching purchased products...');
+      const { data: purchasedProducts, error: purchasedError } = await supabase!
         .from('products')
         .select('id, name, sku, unit, selling_price')
         .eq('is_active', true);
-      if (error) throw error;
-      setProducts(data || []);
+      
+      if (purchasedError) throw purchasedError;
+      console.log('Purchased products:', purchasedProducts);
+      
+      // Fetch manufactured products using RPC (bypasses RLS)
+      console.log('Fetching manufactured products via RPC...');
+      let manufacturedProducts: any[] = [];
+      try {
+        const { data: rpcProducts, error: rpcError } = await supabase!.rpc('get_all_manufactured_products_for_dropdown');
+        if (rpcError) {
+          console.error('RPC Error:', rpcError);
+        } else {
+          manufacturedProducts = rpcProducts || [];
+          console.log('Manufactured products (RPC):', manufacturedProducts);
+          console.log('Manufactured products count:', manufacturedProducts.length);
+          
+          // Log each product details
+          manufacturedProducts.forEach((product, index) => {
+            console.log(`Product ${index + 1}:`, {
+              id: product.id,
+              name: product.name,
+              sku: product.sku,
+              unit: product.unit,
+              selling_price: product.selling_price
+            });
+          });
+        }
+      } catch (rpcError) {
+        console.error('RPC failed for manufactured products:', rpcError);
+      }
+      
+      // Combine both types with type information
+      const allProducts = [
+        ...(purchasedProducts || []).map((p: any) => ({ ...p, type: 'purchased' })),
+        ...manufacturedProducts.map((p: any) => ({ ...p, type: 'manufactured' }))
+      ];
+      
+      console.log('All products for sales:', allProducts);
+      console.log('Total products count:', allProducts.length);
+      setProducts(allProducts);
     } catch (error) {
       console.error('Error fetching products:', error);
     }
@@ -162,7 +206,7 @@ const Sales: React.FC = () => {
       // First, let's see what's in the inventory table without joins
       const { data: basicData, error: basicError } = await supabase!
         .from('inventory')
-        .select('product_id, branch_id, quantity');
+        .select('product_id, manufactured_product_id, branch_id, quantity');
       
       console.log('Basic inventory data (no joins):', basicData);
       console.log('Basic inventory error:', basicError);
@@ -172,9 +216,11 @@ const Sales: React.FC = () => {
         .from('inventory')
         .select(`
           product_id,
+          manufactured_product_id,
           branch_id,
           quantity,
           products (name, sku),
+          manufactured_products (name, sku),
           branches (name)
         `)
         .order('last_updated', { ascending: false });
@@ -198,33 +244,21 @@ const Sales: React.FC = () => {
   };
 
   const getAvailableStock = (productId: string, branchId: string) => {
-    console.log('=== Stock Lookup Debug ===');
-    console.log('Looking for Product ID:', productId);
-    console.log('Looking for Branch ID:', branchId);
-    console.log('Available inventory records:', inventory.length);
-    
-    // Log all inventory records for comparison
-    inventory.forEach((item: any, index) => {
-      console.log(`Inventory ${index}: product_id=${item.product_id}, branch_id=${item.branch_id}, quantity=${item.quantity}`);
-    });
-    
+    // Look for both purchased products and manufactured products
     const item = inventory.find(
-      inv => inv.product_id === productId && inv.branch_id === branchId
+      inv => (inv.product_id === productId || inv.manufactured_product_id === productId) && inv.branch_id === branchId
     );
     const quantity = item ? item.quantity : 0;
-    
-    console.log('Found matching item:', item);
-    console.log('Available quantity:', quantity);
-    console.log('=== End Stock Lookup Debug ===');
     
     return quantity;
   };
 
   const ensureInventoryRecord = async (productId: string, branchId: string) => {
+    // Check for both purchased products and manufactured products
     const { data, error } = await supabase!
       .from('inventory')
       .select('quantity')
-      .eq('product_id', productId)
+      .or(`product_id.eq.${productId},manufactured_product_id.eq.${productId}`)
       .eq('branch_id', branchId)
       .single();
     
@@ -245,13 +279,13 @@ const Sales: React.FC = () => {
     }
 
     // Validate that we have either a single product or cart items
-    if (!formData.product_id && cart.length === 0) {
+    if (!formData.product_id && cartItems.length === 0) {
       alert('Please add at least one product');
       return;
     }
 
     // If we have a single product (not in cart), validate it
-    if (formData.product_id && cart.length === 0 && !formData.quantity) {
+    if (formData.product_id && cartItems.length === 0 && !formData.quantity) {
       alert('Please enter quantity');
       return;
     }
@@ -260,43 +294,31 @@ const Sales: React.FC = () => {
       let saleItems: CartItem[] = [];
 
       // Add single product to cart if not already there
-      if (formData.product_id && cart.length === 0 && formData.quantity) {
-        const product = products.find(p => p.id === formData.product_id);
+      if (formData.product_id && cartItems.length === 0 && formData.quantity) {
+        const product = products.find((p: any) => p.id === formData.product_id);
         if (!product) {
           alert('Product not found');
           return;
         }
 
-        // Check if inventory record exists
-        const inventoryExists = await ensureInventoryRecord(formData.product_id, formData.branch_id);
-        if (!inventoryExists) {
-          alert('No inventory record found for this product and branch. Please add inventory through the Inventory page first.');
-          return;
-        }
-
         const quantity = parseInt(formData.quantity);
-        const availableStock = getAvailableStock(formData.product_id, formData.branch_id);
-        
-        if (quantity > availableStock) {
-          alert(`Insufficient stock! Available: ${availableStock}, Requested: ${quantity}`);
-          return;
-        }
-
         const unitPrice = formData.unit_price ? parseFloat(formData.unit_price) : (product.selling_price || 0);
-        
-        saleItems = [{
+        const totalPrice = quantity * unitPrice;
+
+        const newItem: CartItem = {
           product_id: formData.product_id,
           product_name: product.name,
           product_sku: product.sku,
           quantity,
           unit_price: unitPrice,
-          total_price: quantity * unitPrice,
-          available_stock: availableStock
-        }];
+          total_price: totalPrice,
+          available_stock: getAvailableStock(formData.product_id, formData.branch_id)
+        };
+        saleItems = [newItem];
       }
 
       // Combine with cart items
-      saleItems = [...saleItems, ...cart];
+      saleItems = [...saleItems, ...cartItems];
 
       // Check inventory exists and stock for all items
       for (const item of saleItems) {
@@ -315,16 +337,28 @@ const Sales: React.FC = () => {
 
       // Process each sale item
       for (const item of saleItems) {
-        // Create sale record
-        const { error: saleError } = await supabase!.from('sales').insert({
-          product_id: item.product_id,
+        // Check if this is a manufactured product
+        const product = products.find(p => p.id === item.product_id);
+        const isManufactured = product?.type === 'manufactured';
+        
+        // Create sale record with correct product reference
+        const saleData: any = {
           branch_id: formData.branch_id,
           quantity_sold: item.quantity,
           unit_price: item.unit_price,
           total_amount: item.total_price,
           customer_name: formData.customer_name,
           created_by: user?.id
-        });
+        };
+        
+        // Set the correct product field based on product type
+        if (isManufactured) {
+          saleData.manufactured_product_id = item.product_id;
+        } else {
+          saleData.product_id = item.product_id;
+        }
+        
+        const { error: saleError } = await supabase!.from('sales').insert(saleData);
 
         if (saleError) throw saleError;
 
@@ -338,7 +372,7 @@ const Sales: React.FC = () => {
             quantity: newStock,
             last_updated: new Date().toISOString()
           })
-          .eq('product_id', item.product_id)
+          .or(`product_id.eq.${item.product_id},manufactured_product_id.eq.${item.product_id}`)
           .eq('branch_id', formData.branch_id);
 
         if (updateError) throw updateError;
@@ -366,14 +400,15 @@ const Sales: React.FC = () => {
         quantity: '',
         unit_price: '',
       });
-      setCart([]);
+      setCartItems([]);
       setShowForm(false);
       
       // Clear cache and refresh data
       delete cacheRef.current['sales'];
       delete cacheRef.current['inventory'];
-      fetchSales();
-      fetchInventory();
+      console.log('About to fetch sales after creating new sale...');
+      await fetchSales();
+      await fetchInventory();
       
       alert('Sale recorded successfully!');
     } catch (error) {
@@ -422,20 +457,20 @@ const Sales: React.FC = () => {
     const totalPrice = quantity * unitPrice;
 
     // Check if product already in cart
-    const existingItemIndex = cart.findIndex(item => item.product_id === formData.product_id);
+    const existingItemIndex = cartItems.findIndex((item: any) => item.product_id === formData.product_id);
     
     if (existingItemIndex >= 0) {
       // Update existing item
-      const updatedCart = [...cart];
+      const updatedCart = [...cartItems];
       updatedCart[existingItemIndex] = {
         ...updatedCart[existingItemIndex],
         quantity: updatedCart[existingItemIndex].quantity + quantity,
         total_price: updatedCart[existingItemIndex].total_price + totalPrice
       };
-      setCart(updatedCart);
+      setCartItems(updatedCart);
     } else {
       // Add new item
-      setCart([...cart, {
+      setCartItems([...cartItems, {
         product_id: formData.product_id,
         product_name: product.name,
         product_sku: product.sku,
@@ -481,7 +516,7 @@ const Sales: React.FC = () => {
   };
 
   const removeFromCart = (product_id: string) => {
-    setCart(cart.filter(item => item.product_id !== product_id));
+    setCartItems(cartItems.filter((item: any) => item.product_id !== product_id));
   };
 
   const updateCartQuantity = (product_id: string, newQuantity: number) => {
@@ -490,7 +525,7 @@ const Sales: React.FC = () => {
       return;
     }
 
-    setCart(cart.map(item => {
+    setCartItems(cartItems.map((item: any) => {
       if (item.product_id === product_id) {
         return {
           ...item,
@@ -503,11 +538,11 @@ const Sales: React.FC = () => {
   };
 
   const getCartTotal = () => {
-    return cart.reduce((sum, item) => sum + item.total_price, 0);
+    return cartItems.reduce((sum: number, item: any) => sum + item.total_price, 0);
   };
 
   const getCartItemCount = () => {
-    return cart.reduce((sum, item) => sum + item.quantity, 0);
+    return cartItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -531,9 +566,9 @@ const Sales: React.FC = () => {
   const handleEditSale = (sale: Sale) => {
     // Pre-fill form with sale data for editing
     setFormData({
-      branch_id: sale.branch_id,
+      branch_id: sale.branch_id || '',
       customer_name: sale.customer_name,
-      product_id: sale.product_id,
+      product_id: sale.product_id || sale.manufactured_product_id || '',
       quantity: sale.quantity_sold.toString(),
       unit_price: sale.unit_price.toString()
     });
@@ -541,55 +576,70 @@ const Sales: React.FC = () => {
   };
 
   const handleDeleteSale = async (sale: Sale) => {
-    if (!confirm(`Are you sure you want to delete this sale to "${sale.customer_name || 'Unknown Customer'}" for ETB ${sale.total_amount.toFixed(2)}? This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete this sale to "${sale.customer_name}" for ETB ${sale.total_amount.toFixed(2)}? This action cannot be undone.`)) {
       return;
     }
-    
+
     try {
-      // Get current inventory before deleting sale
-      const { data: currentInventory } = await supabase!
-        .from('inventory')
-        .select('quantity')
-        .eq('product_id', sale.product_id)
-        .eq('branch_id', sale.branch_id)
-        .single();
-      
       // Restore inventory quantity
-      if (currentInventory && sale.quantity_sold) {
-        const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
-        
-        await supabase!
+      if (sale.product_id) {
+        const { data: currentInventory } = await supabase!
           .from('inventory')
-          .update({ 
-            quantity: newQuantity,
-            last_updated: new Date().toISOString()
-          })
+          .select('quantity')
           .eq('product_id', sale.product_id)
-          .eq('branch_id', sale.branch_id);
+          .eq('branch_id', sale.branch_id)
+          .single();
+        
+        if (currentInventory && sale.quantity_sold) {
+          const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
+          
+          await supabase!
+            .from('inventory')
+            .update({ 
+              quantity: newQuantity,
+              last_updated: new Date().toISOString()
+            })
+            .eq('product_id', sale.product_id)
+            .eq('branch_id', sale.branch_id);
+        }
+      } else if (sale.manufactured_product_id) {
+        const { data: currentInventory } = await supabase!
+          .from('inventory')
+          .select('quantity')
+          .eq('manufactured_product_id', sale.manufactured_product_id)
+          .eq('branch_id', sale.branch_id)
+          .single();
+        
+        if (currentInventory && sale.quantity_sold) {
+          const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
+          
+          await supabase!
+            .from('inventory')
+            .update({ 
+              quantity: newQuantity,
+              last_updated: new Date().toISOString()
+            })
+            .eq('manufactured_product_id', sale.manufactured_product_id)
+            .eq('branch_id', sale.branch_id);
+        }
       }
 
       // Delete the sale record
-      const { error } = await supabase!
+      const { error: deleteError } = await supabase!
         .from('sales')
         .delete()
         .eq('id', sale.id);
 
-      if (error) {
-        const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : 'Unknown error';
-        alert(`Error deleting sale: ${errorMessage}`);
-        return;
-      }
-      
-      // Clear cache and refresh data
-      delete cacheRef.current['sales'];
-      delete cacheRef.current['inventory'];
-      fetchSales();
+      if (deleteError) throw deleteError;
+
+      // Refresh data
+      fetchSales(1);
       fetchInventory();
       
       alert('Sale deleted successfully! Inventory quantity restored.');
-    } catch (error) {
-      const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : 'Unknown error';
-      alert(`Error deleting sale: ${errorMessage}`);
+    } catch (error: any) {
+      console.error('Error deleting sale:', error);
+      alert(`Error deleting sale: ${error.message}`);
     }
   };
 
@@ -694,7 +744,7 @@ const Sales: React.FC = () => {
               </div>
             </div>
             <p className="text-3xl font-bold text-gray-900 truncate">
-              {sales.reduce((sum, sale) => sum + sale.quantity_sold, 0).toLocaleString()}
+              {sales.reduce((sum, sale) => sum + sale.total_amount, 0).toLocaleString()}
             </p>
             <p className="text-xs text-gray-500 mt-1">Total units</p>
           </div>
@@ -726,7 +776,7 @@ const Sales: React.FC = () => {
             <button
               onClick={() => {
                 setShowForm(false);
-                setCart([]);
+                setCartItems([]);
                 setShowAddProduct(false);
               }}
               className="text-gray-400 hover:text-gray-600"
@@ -772,7 +822,7 @@ const Sales: React.FC = () => {
 
             {/* Product Selection */}
             <div className="border-t pt-3">
-              {formData.product_id && formData.quantity && cart.length === 0 && (
+              {formData.product_id && formData.quantity && cartItems.length === 0 && (
                 <button
                   type="button"
                   onClick={addCurrentProductToCart}
@@ -784,12 +834,12 @@ const Sales: React.FC = () => {
             </div>
 
             {/* Single Product Form */}
-            {cart.length === 0 && (
+            {cartItems.length === 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Product *</label>
                   <select
-                    required={cart.length === 0}
+                    required={cartItems.length === 0}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     value={formData.product_id}
                     onChange={handleInputChange}
@@ -798,7 +848,7 @@ const Sales: React.FC = () => {
                     <option value="">Select Product</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>
-                        {product.name}
+                        {product.name} ({product.type === 'manufactured' ? 'Manufactured' : 'Purchased'}) - {product.sku}
                       </option>
                     ))}
                   </select>
@@ -807,7 +857,7 @@ const Sales: React.FC = () => {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Quantity *</label>
                   <input
                     type="number"
-                    required={cart.length === 0}
+                    required={cartItems.length === 0}
                     min="1"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     value={formData.quantity}
@@ -840,7 +890,7 @@ const Sales: React.FC = () => {
             <div className="flex space-x-3 border-t pt-3">
               <button
                 type="submit"
-                disabled={!formData.product_id && cart.length === 0}
+                disabled={!formData.product_id && cartItems.length === 0}
                 className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
               >
                 Complete Sale (ETB {getTotalAmount().toFixed(2)})
@@ -849,7 +899,7 @@ const Sales: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setShowForm(false);
-                  setCart([]);
+                  setCartItems([]);
                   setShowAddProduct(false);
                 }}
                 className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 text-sm"
@@ -863,64 +913,50 @@ const Sales: React.FC = () => {
 
       {/* Sales Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Sales History</h3>
-        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Product
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Customer
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Amount
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {sales.map((sale) => (
-                <tr 
-                  key={sale.id} 
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => handleSaleRowClick(sale)}
-                >
+                <tr key={sale.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {new Date(sale.sale_date).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {sale.products?.name || (sale.product_id ? `Product ID: ${sale.product_id}` : 'No Product Assigned')}
+                        {sale.product_name || 'Unknown Product'}
                       </div>
                       <div className="text-sm text-gray-500">
-                        {sale.products?.sku || (sale.product_id ? 'No SKU Available' : 'No Product')}
+                        {sale.product_sku || 'No SKU'}
                       </div>
-                      {!sale.products && (
-                        <div className="text-xs text-orange-600 mt-1">
-                          {sale.product_id ? '⚠️ Product information missing' : '⚠️ No product linked to this sale'}
-                        </div>
+                      {sale.is_manufactured && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          Manufactured
+                        </span>
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {sale.branches?.name || (sale.branch_id ? `Branch ID: ${sale.branch_id}` : 'No Branch Assigned')}
-                    {!sale.branches && (
-                      <div className="text-xs text-orange-600">
-                        {sale.branch_id ? '⚠️ Branch info missing' : '⚠️ No branch linked to this sale'}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {sale.customer_name || 'Walk-in Customer'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {sale.quantity_sold} {sale.products?.unit || 'units'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${sale.unit_price.toFixed(2)} ETB
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     ${sale.total_amount.toFixed(2)} ETB
@@ -930,13 +966,26 @@ const Sales: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          handleSaleRowClick(sale);
+                        }}
+                        className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded"
+                        title="View sale"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleEditSale(sale);
                         }}
-                        className="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors"
+                        className="text-green-600 hover:text-green-900 p-1 hover:bg-green-50 rounded"
                         title="Edit sale"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11 16H9v-2.828l8.586-8.586z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
                       <button
@@ -944,7 +993,7 @@ const Sales: React.FC = () => {
                           e.stopPropagation();
                           handleDeleteSale(sale);
                         }}
-                        className="text-red-600 hover:text-red-800 font-medium text-sm transition-colors"
+                        className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded"
                         title="Delete sale"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -959,6 +1008,62 @@ const Sales: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="bg-white rounded-xl shadow-lg p-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing {((currentPage - 1) * SALES_PER_PAGE) + 1} to {Math.min(currentPage * SALES_PER_PAGE, totalSales)} of {totalSales} sales
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => fetchSales(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              
+              {/* Page numbers */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => fetchSales(pageNum)}
+                    className={`px-3 py-1 text-sm rounded ${
+                      currentPage === pageNum
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+              
+              <button
+                onClick={() => fetchSales(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Sale Detail Modal */}
       {showDetailModal && selectedSale && (
@@ -998,20 +1103,25 @@ const Sales: React.FC = () => {
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm font-medium text-gray-500">Product Name</p>
-                      <p className="text-base text-gray-900">{selectedSale.products?.name || (selectedSale.product_id ? `Product ID: ${selectedSale.product_id}` : 'No Product Assigned')}</p>
-                      {!selectedSale.products && (
-                        <p className="text-xs text-orange-600 mt-1">
-                          {selectedSale.product_id ? '⚠️ Product information missing' : '⚠️ No product linked to this sale'}
-                        </p>
-                      )}
+                      <p className="text-base text-gray-900">
+                        {selectedSale.product_name || 'Unknown Product'}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">SKU</p>
-                      <p className="text-base text-gray-900">{selectedSale.products?.sku || (selectedSale.product_id ? 'No SKU Available' : 'No Product')}</p>
+                      <p className="text-base text-gray-900">
+                        {selectedSale.product_sku || 'No SKU'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Type</p>
+                      <p className="text-base text-gray-900">
+                        {selectedSale.is_manufactured ? 'Manufactured Product' : 'Purchased Product'}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Quantity Sold</p>
-                      <p className="text-base text-gray-900">{selectedSale.quantity_sold} {selectedSale.products?.unit || 'units'}</p>
+                      <p className="text-base text-gray-900">{selectedSale.quantity_sold} {selectedSale.product_unit || 'units'}</p>
                     </div>
                   </div>
                 </div>
@@ -1023,15 +1133,6 @@ const Sales: React.FC = () => {
                     <div>
                       <p className="text-sm font-medium text-gray-500">Customer Name</p>
                       <p className="text-base text-gray-900">{selectedSale.customer_name || 'Walk-in Customer'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">Branch</p>
-                      <p className="text-base text-gray-900">{selectedSale.branches?.name || (selectedSale.branch_id ? `Branch ID: ${selectedSale.branch_id}` : 'No Branch Assigned')}</p>
-                      {!selectedSale.branches && (
-                        <p className="text-xs text-orange-600">
-                          {selectedSale.branch_id ? '⚠️ Branch information missing' : '⚠️ No branch linked to this sale'}
-                        </p>
-                      )}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Unit Price</p>

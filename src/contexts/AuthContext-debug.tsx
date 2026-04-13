@@ -55,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: session.user.email!,
               name: 'Admin User',
               role: UserRole.ADMIN,
-              branch_id: undefined,
+              branch_id: '420c84a8-e559-4e3a-86ee-06bcb15baacd', // Lamberet Branch
               created_at: new Date().toISOString(),
             };
             setUser(adminUser);
@@ -98,9 +98,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       console.log('✅ Email validation passed - calling Supabase');
-      const { error } = await supabase!.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase!.auth.signInWithPassword({ email, password });
       if (error) throw error;
       console.log('✅ Login successful');
+      
+      // Manually update user state after successful login
+      if (data.session && data.user) {
+        const basicUser = {
+          id: data.user.id,
+          email: data.user.email || '',
+          name: data.user.user_metadata?.name || data.user.email || 'Admin User',
+          role: 'admin' as UserRole,
+          created_at: data.user.created_at,
+        };
+        setUser(basicUser);
+        console.log('✅ User state updated manually after login');
+      }
     } catch (error) {
       console.error('❌ Login error:', error);
       throw error;

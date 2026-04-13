@@ -17,7 +17,6 @@ const Products: React.FC = () => {
     category_id: '',
     description: '',
     unit: '',
-    is_manufactured: false,
     low_stock_threshold: '10'
   });
 
@@ -78,7 +77,6 @@ const Products: React.FC = () => {
           unit: formData.unit,
           cost_price: 0, // Default to 0 since prices vary
           selling_price: 0, // Default to 0 since prices vary
-          is_manufactured: formData.is_manufactured,
           low_stock_threshold: parseInt(formData.low_stock_threshold)
         })
         .select()
@@ -116,7 +114,6 @@ const Products: React.FC = () => {
       category_id: product.category_id || '',
       description: product.description || '',
       unit: product.unit,
-      is_manufactured: product.is_manufactured,
       low_stock_threshold: product.low_stock_threshold.toString()
     });
     setShowAddForm(true);
@@ -136,7 +133,6 @@ const Products: React.FC = () => {
           category_id: formData.category_id || null,
           description: formData.description,
           unit: formData.unit,
-          is_manufactured: formData.is_manufactured,
           low_stock_threshold: parseInt(formData.low_stock_threshold)
         })
         .eq('id', editingProduct.id)
@@ -235,7 +231,6 @@ const Products: React.FC = () => {
       category_id: '',
       description: '',
       unit: '',
-      is_manufactured: false,
       low_stock_threshold: '10'
     });
     setEditingProduct(null);
@@ -328,12 +323,8 @@ const Products: React.FC = () => {
                     {product.low_stock_threshold}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      product.is_manufactured 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {product.is_manufactured ? 'Manufactured' : 'Purchased'}
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                      Purchased
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -491,55 +482,9 @@ const Products: React.FC = () => {
                     value={formData.description}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none text-sm"
-                    rows={2}
-                    placeholder="Product details..."
+                    rows={3}
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      Stock Alert
-                    </label>
-                    <input
-                      type="number"
-                      name="low_stock_threshold"
-                      value={formData.low_stock_threshold}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
-                      placeholder="10"
-                      min="1"
-                    />
                   </div>
-
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      name="is_manufactured"
-                      id="is_manufactured"
-                      checked={formData.is_manufactured}
-                      onChange={handleInputChange}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="is_manufactured" className="ml-2 block text-sm font-medium text-gray-900">
-                      🏭 Manufactured
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex space-x-3 pt-3 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddForm(false);
-                    resetForm();
-                  }}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
-                >
-                  Cancel
-                </button>
                 <button
                   type="submit"
                   className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded-lg font-medium transition-all text-sm"

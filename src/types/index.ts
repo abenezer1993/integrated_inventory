@@ -155,6 +155,11 @@ export interface ManufacturingOrder {
   product_type?: string;
   created_at: string;
   updated_at: string;
+  branches?: {
+    id: string;
+    name: string;
+    location: string;
+  };
 }
 
 export interface ManufacturingMaterial {
