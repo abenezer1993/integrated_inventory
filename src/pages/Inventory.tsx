@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { useConfirmation } from '../utils/confirmations';
 
 interface InventoryItem {
   id: string;
@@ -36,6 +37,7 @@ interface InventoryItem {
 const Inventory: React.FC = () => {
   const { supabase } = useSupabase();
   const { user } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdjustForm, setShowAdjustForm] = useState(false);
@@ -403,9 +405,8 @@ const Inventory: React.FC = () => {
 
   const handleDeleteInventory = async (item: InventoryItem) => {
     const productName = item.product_name || 'Unknown Product';
-    if (!confirm(`Are you sure you want to delete the inventory record for "${productName}"? This action cannot be undone.`)) {
-      return;
-    }
+    showConfirmation({title: 'Delete Inventory', message: `Are you sure you want to delete the inventory record for "${productName}"? This action cannot be undone.`, onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
+    return;
     
     try {
       const { error } = await supabase!

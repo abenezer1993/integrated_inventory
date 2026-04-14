@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { useConfirmation } from '../utils/confirmations';
 
 interface Expense {
   id?: string;
@@ -44,9 +45,10 @@ interface ExpenseSummary {
   }>;
 }
 
-function Expenses() {
+const Expenses: React.FC = () => {
   const { supabase } = useSupabase();
   const { user } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [activeTab, setActiveTab] = useState<'expenses' | 'health' | 'gypsum' | 'wood' | 'analytics'>('expenses');
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -299,7 +301,8 @@ function Expenses() {
   };
 
   const deleteExpense = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this expense?')) return;
+    showConfirmation({title: 'Delete Expense', message: 'Are you sure you want to delete this expense?', onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
+    return;
     
     try {
       const { error } = await supabase!

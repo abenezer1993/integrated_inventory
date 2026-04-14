@@ -3,11 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useConfirmation } from '../utils/confirmations';
 import { Product, ProductCategory } from '../types';
 
 const Products: React.FC = () => {
   const { supabase } = useSupabase();
   const { hasPermission } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,9 +162,8 @@ const Products: React.FC = () => {
   };
 
   const handleDeleteProduct = async (product: Product) => {
-    if (!confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
-      return;
-    }
+    showConfirmation({title: 'Delete Product', message: `Are you sure you want to delete "${product.name}"? This action cannot be undone.`, onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
+    return;
     
     try {
       const { error } = await supabase!
@@ -202,9 +203,8 @@ const Products: React.FC = () => {
   };
 
   const handleDeactivateProduct = async (product: Product) => {
-    if (!confirm(`Are you sure you want to deactivate "${product.name}"? It will no longer be available for new transactions but will remain in existing records.`)) {
-      return;
-    }
+    showConfirmation({title: 'Deactivate Product', message: `Are you sure you want to deactivate "${product.name}"? It will no longer be available for new transactions but will remain in existing records.`, onConfirm: () => {}, type: 'warning', confirmText: 'Deactivate', cancelText: 'Cancel'});
+    return;
     
     try {
       const { error } = await supabase!

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { useConfirmation } from '../utils/confirmations';
 
 interface Branch {
   id: string;
@@ -18,6 +19,7 @@ interface Branch {
 const Branches: React.FC = () => {
   const { supabase } = useSupabase();
   const { user } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -140,9 +142,8 @@ const Branches: React.FC = () => {
   };
 
   const handleDelete = async (branchId: string) => {
-    if (!confirm('Are you sure you want to delete this branch? This action cannot be undone.')) {
-      return;
-    }
+    showConfirmation({title: 'Delete Branch', message: 'Are you sure you want to delete this branch? This action cannot be undone.', onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
+    return;
 
     try {
       const { error } = await supabase!

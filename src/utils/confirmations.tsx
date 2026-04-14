@@ -114,3 +114,22 @@ export const customConfirm = (message: string, onConfirm: () => void) => {
     onConfirm();
   }
 };
+
+// Quick replacement function for existing confirm() calls
+export const replaceConfirm = (message: string, callback: () => void, context: any) => {
+  if (context?.showConfirmation) {
+    context.showConfirmation({
+      title: 'Confirm Action',
+      message: message,
+      onConfirm: callback,
+      type: 'danger',
+      confirmText: 'Confirm',
+      cancelText: 'Cancel'
+    });
+  } else {
+    // Fallback to browser confirm
+    if (window.confirm(message)) {
+      callback();
+    }
+  }
+};
