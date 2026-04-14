@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { notificationService } from '../utils/notifications';
-import { alert } from '../utils/alerts';
-
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { alertFunction } from '../utils/alerts';
+import { useSupabase } from '../contexts/SupabaseContext';
 
 interface AnalyticsData {
   overview: {
@@ -34,6 +30,7 @@ interface AnalyticsData {
 }
 
 const Analytics: React.FC = () => {
+  const { supabase } = useSupabase();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
@@ -67,14 +64,14 @@ const Analytics: React.FC = () => {
 
   const fetchAnalyticsData = async () => {
     try {
-      const { data: sales } = await supabase.from('sales').select('*');
-      const { data: expenses } = await supabase.from('expenses').select('*');
-      const { data: orders } = await supabase.from('manufacturing_orders').select('*');
-      const { data: products } = await supabase.from('products').select('*');
-      const { data: customers } = await supabase.from('customers').select('*');
-      const { data: branches } = await supabase.from('branches').select('*');
-      const { data: manufacturedProductsList } = await supabase.from('manufactured_products').select('*');
-      const { data: manufacturingExpenses } = await supabase.from('manufacturing_expenses').select('*');
+      const { data: sales } = await supabase!.from('sales').select('*');
+      const { data: expenses } = await supabase!.from('expenses').select('*');
+      const { data: orders } = await supabase!.from('manufacturing_orders').select('*');
+      const { data: products } = await supabase!.from('products').select('*');
+      const { data: customers } = await supabase!.from('customers').select('*');
+      const { data: branches } = await supabase!.from('branches').select('*');
+      const { data: manufacturedProductsList } = await supabase!.from('manufactured_products').select('*');
+      const { data: manufacturingExpenses } = await supabase!.from('manufacturing_expenses').select('*');
 
       if (!sales || !expenses || !orders || !products || !customers || !branches || !manufacturedProductsList || !manufacturingExpenses) {
         setData(null);
@@ -165,6 +162,7 @@ const Analytics: React.FC = () => {
     fetchAnalyticsData();
   }, [selectedPeriod]);
 
+  
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">

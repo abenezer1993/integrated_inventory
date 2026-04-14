@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';

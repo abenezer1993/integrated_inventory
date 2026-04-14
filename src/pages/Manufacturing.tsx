@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useConfirmation } from '../utils/confirmations';
 import { Product, ManufacturingOrder, ManufacturingExpense } from '../types';
 
 const Manufacturing: React.FC = () => {
   const { supabase } = useSupabase();
   const { user, hasPermission } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [manufacturingOrders, setManufacturingOrders] = useState<ManufacturingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
@@ -26,20 +27,19 @@ const Manufacturing: React.FC = () => {
   
   // Check if user is loaded
   useEffect(() => {
-    if (user !== undefined) {
-      setAuthLoading(false);
-    }
-  }, [user]);
+    // Set authLoading to false immediately since we have the user context
+    setAuthLoading(false);
+  }, []);
   
   // Test permission check
-  console.log('🏭 Testing manage_manufacturing permission:', hasPermission('manage_manufacturing'));
+  console.log('Testing manage_manufacturing permission:', hasPermission('manage_manufacturing'));
 
   useEffect(() => {
-    if (user && !authLoading) {
+    if (!authLoading) {
       fetchManufacturingOrders();
       fetchBranches();
     }
-  }, [user, authLoading]);
+  }, [authLoading]);
 
   const fetchBranches = async () => {
     try {
@@ -247,6 +247,7 @@ const Manufacturing: React.FC = () => {
     alertFunction(`View Order: ${order.order_number}\n\nProduct: ${order.product_name}\nQuantity: ${order.quantity_produced}\nStatus: ${order.status}\nNotes: ${order.notes || 'No notes'}`);
   };
 
+  
   const handleEditOrder = (order: any) => {
     const newQuantity = prompt('Edit Quantity:', order.quantity_produced);
     const newNotes = prompt('Edit Notes:', order.notes || '');
@@ -278,9 +279,14 @@ const Manufacturing: React.FC = () => {
   };
 
   const handleDeleteOrder = (order: any) => {
-    if (confirm(`Are you sure you want to delete order ${order.order_number}? This action cannot be undone.`)) {
-      deleteManufacturingOrder(order.id);
-    }
+    showConfirmation({
+      title: 'Delete Manufacturing Order',
+      message: `Are you sure you want to delete order ${order.order_number}? This action cannot be undone.`,
+      onConfirm: () => deleteManufacturingOrder(order.id),
+      type: 'danger',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
   };
 
   const handleTransferToInventory = async (order: any) => {

@@ -27,7 +27,7 @@ const Layout: React.FC = () => {
       { path: '/manufacturing', name: 'Manufacturing', icon: '🏭', permission: 'manage_manufacturing' as string | null },
       { path: '/branches', name: 'Branches', icon: '🏪', permission: 'manage_branches' as string | null },
       { path: '/users', name: 'Users', icon: '👥', permission: 'manage_users' as string | null },
-      { path: '/reports', name: 'Reports', icon: '📈', permission: 'view_all_reports' as string | null },
+      { path: '/analytics', name: 'Reports', icon: '�', permission: 'view_all_reports' as string | null },
       { path: '/expenses', name: 'Expenses', icon: '💸', permission: 'manage_expenses' as string | null },
     ];
 
@@ -36,7 +36,7 @@ const Layout: React.FC = () => {
       { path: '/inventory', name: 'Inventory', icon: '📋', permission: 'manage_branch_inventory' as string | null },
       { path: '/sales', name: 'Sales', icon: '💰', permission: 'manage_branch_sales' as string | null },
       { path: '/customers', name: 'Customers', icon: '👤', permission: 'manage_customers' as string | null },
-      { path: '/reports', name: 'Reports', icon: '📈', permission: 'view_branch_reports' as string | null },
+      { path: '/analytics', name: 'Reports', icon: ' ', permission: 'view_branch_reports' as string | null },
       { path: '/expenses', name: 'Expenses', icon: '💸', permission: 'manage_branch_expenses' as string | null },
     ];
 

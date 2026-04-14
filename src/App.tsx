@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext-debug';
 import { SupabaseProvider } from './contexts/SupabaseContext';
+import { ConfirmationProvider } from './utils/confirmations';
 import Layout from './components/Layout';
 import Notifications from './components/Notifications';
 import Dashboard from './pages/Dashboard';
@@ -19,32 +20,34 @@ import Login from './pages/Login';
 
 function App() {
   return (
-    <>
-      <SupabaseProvider>
-        <AuthProvider>
-          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="materials" element={<Materials />} />
-                <Route path="products" element={<Products />} />
-                <Route path="inventory" element={<Inventory />} />
-                <Route path="sales" element={<Sales />} />
-                <Route path="purchases" element={<Purchases />} />
-                <Route path="manufacturing" element={<Manufacturing />} />
-                <Route path="branches" element={<Branches />} />
-                <Route path="users" element={<UserManagement />} />
-                <Route path="expenses" element={<Expenses />} />
-                <Route path="analytics" element={<Analytics />} />
-                <Route path="customers" element={<Customers />} />
-              </Route>
-            </Routes>
-          </Router>
-        </AuthProvider>
-      </SupabaseProvider>
-      <Notifications />
-    </>
+    <ConfirmationProvider>
+      <>
+        <SupabaseProvider>
+          <AuthProvider>
+            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="materials" element={<Materials />} />
+                  <Route path="products" element={<Products />} />
+                  <Route path="inventory" element={<Inventory />} />
+                  <Route path="sales" element={<Sales />} />
+                  <Route path="purchases" element={<Purchases />} />
+                  <Route path="manufacturing" element={<Manufacturing />} />
+                  <Route path="branches" element={<Branches />} />
+                  <Route path="users" element={<UserManagement />} />
+                  <Route path="expenses" element={<Expenses />} />
+                  <Route path="analytics" element={<Analytics />} />
+                  <Route path="customers" element={<Customers />} />
+                </Route>
+              </Routes>
+            </Router>
+          </AuthProvider>
+        </SupabaseProvider>
+        <Notifications />
+      </>
+    </ConfirmationProvider>
   );
 }
 

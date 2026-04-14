@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useConfirmation } from '../utils/confirmations';
 import { User, UserRole } from '../types';
 
 const UserManagement: React.FC = () => {
   const { supabase } = useSupabase();
   const { user: currentUser, hasPermission } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddUserForm, setShowAddUserForm] = useState(false);
@@ -146,30 +147,35 @@ const UserManagement: React.FC = () => {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) {
-      return;
-    }
+    showConfirmation({
+      title: 'Delete User',
+      message: 'Are you sure you want to delete this user?',
+      onConfirm: async () => {
+        try {
+          // Delete user profile
+          const { error: profileError } = await supabase!
+            .from('users')
+            .delete()
+            .eq('id', userId);
 
-    try {
-      // Delete user profile
-      const { error: profileError } = await supabase!
-        .from('users')
-        .delete()
-        .eq('id', userId);
+          if (profileError) throw profileError;
 
-      if (profileError) throw profileError;
+          // Delete auth user
+          const { error: authError } = await supabase!.auth.admin.deleteUser(userId);
+          
+          if (authError) throw authError;
 
-      // Delete auth user
-      const { error: authError } = await supabase!.auth.admin.deleteUser(userId);
-      
-      if (authError) throw authError;
-
-      fetchUsers();
-      alertFunction('User deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      alertFunction('Error deleting user. Please try again.');
-    }
+          fetchUsers();
+          alertFunction('User deleted successfully!');
+        } catch (error) {
+          console.error('Error deleting user:', error);
+          alertFunction('Error deleting user. Please try again.');
+        }
+      },
+      type: 'danger',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
   };
 
   const openEditForm = (user: User) => {
