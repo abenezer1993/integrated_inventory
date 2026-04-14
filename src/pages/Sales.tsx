@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useConfirmation } from '../utils/confirmations';
 
 interface Sale {
   id: string;
@@ -41,6 +42,7 @@ interface SalesFormData {
 const Sales: React.FC = () => {
   const { supabase } = useSupabase();
   const { user } = useAuth();
+  const { showConfirmation } = useConfirmation();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -578,71 +580,76 @@ const Sales: React.FC = () => {
   };
 
   const handleDeleteSale = async (sale: Sale) => {
-    if (!confirm(`Are you sure you want to delete this sale to "${sale.customer_name}" for ETB ${sale.total_amount.toFixed(2)}? This action cannot be undone.`)) {
-      return;
-    }
+    showConfirmation({
+      title: 'Delete Sale',
+      message: `Are you sure you want to delete this sale to "${sale.customer_name}" for ETB ${sale.total_amount.toFixed(2)}? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          // Restore inventory quantity
+          if (sale.product_id) {
+            const { data: currentInventory } = await supabase!
+              .from('inventory')
+              .select('quantity')
+              .eq('product_id', sale.product_id)
+              .eq('branch_id', sale.branch_id)
+              .single();
+            
+            if (currentInventory && sale.quantity_sold) {
+              const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
+              
+              await supabase!
+                .from('inventory')
+                .update({ 
+                  quantity: newQuantity,
+                  last_updated: new Date().toISOString()
+                })
+                .eq('product_id', sale.product_id)
+                .eq('branch_id', sale.branch_id);
+            }
+          } else if (sale.manufactured_product_id) {
+            const { data: currentInventory } = await supabase!
+              .from('inventory')
+              .select('quantity')
+              .eq('manufactured_product_id', sale.manufactured_product_id)
+              .eq('branch_id', sale.branch_id)
+              .single();
+            
+            if (currentInventory && sale.quantity_sold) {
+              const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
+              
+              await supabase!
+                .from('inventory')
+                .update({ 
+                  quantity: newQuantity,
+                  last_updated: new Date().toISOString()
+                })
+                .eq('manufactured_product_id', sale.manufactured_product_id)
+                .eq('branch_id', sale.branch_id);
+            }
+          }
 
-    try {
-      // Restore inventory quantity
-      if (sale.product_id) {
-        const { data: currentInventory } = await supabase!
-          .from('inventory')
-          .select('quantity')
-          .eq('product_id', sale.product_id)
-          .eq('branch_id', sale.branch_id)
-          .single();
-        
-        if (currentInventory && sale.quantity_sold) {
-          const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
+          // Delete the sale record
+          const { error: deleteError } = await supabase!
+            .from('sales')
+            .delete()
+            .eq('id', sale.id);
+
+          if (deleteError) throw deleteError;
+
+          // Refresh data
+          fetchSales(1);
+          fetchInventory();
           
-          await supabase!
-            .from('inventory')
-            .update({ 
-              quantity: newQuantity,
-              last_updated: new Date().toISOString()
-            })
-            .eq('product_id', sale.product_id)
-            .eq('branch_id', sale.branch_id);
+          alertFunction('Sale deleted successfully! Inventory quantity restored.');
+        } catch (error: any) {
+          console.error('Error deleting sale:', error);
+          alertFunction(`Error deleting sale: ${error.message}`);
         }
-      } else if (sale.manufactured_product_id) {
-        const { data: currentInventory } = await supabase!
-          .from('inventory')
-          .select('quantity')
-          .eq('manufactured_product_id', sale.manufactured_product_id)
-          .eq('branch_id', sale.branch_id)
-          .single();
-        
-        if (currentInventory && sale.quantity_sold) {
-          const newQuantity = (currentInventory.quantity || 0) + sale.quantity_sold;
-          
-          await supabase!
-            .from('inventory')
-            .update({ 
-              quantity: newQuantity,
-              last_updated: new Date().toISOString()
-            })
-            .eq('manufactured_product_id', sale.manufactured_product_id)
-            .eq('branch_id', sale.branch_id);
-        }
-      }
-
-      // Delete the sale record
-      const { error: deleteError } = await supabase!
-        .from('sales')
-        .delete()
-        .eq('id', sale.id);
-
-      if (deleteError) throw deleteError;
-
-      // Refresh data
-      fetchSales(1);
-      fetchInventory();
-      
-      alertFunction('Sale deleted successfully! Inventory quantity restored.');
-    } catch (error: any) {
-      console.error('Error deleting sale:', error);
-      alertFunction(`Error deleting sale: ${error.message}`);
-    }
+      },
+      type: 'danger',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
   };
 
   const getCurrentProduct = () => {
