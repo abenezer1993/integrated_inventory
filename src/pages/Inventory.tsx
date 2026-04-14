@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useSupabase } from '../contexts/SupabaseContext';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useSupabase } from '../contexts/SupabaseContext';
 
 interface InventoryItem {
   id: string;
@@ -262,18 +264,18 @@ const Inventory: React.FC = () => {
     });
     
     if (!selectedItem) {
-      alert('Please select an inventory item');
+      alertFunction('Please select an inventory item');
       return;
     }
     
     if (!adjustmentQuantity || adjustmentQuantity.trim() === '') {
-      alert('Please enter a quantity');
+      alertFunction('Please enter a quantity');
       return;
     }
 
     const qty = parseInt(adjustmentQuantity);
     if (isNaN(qty) || qty <= 0) {
-      alert('Please enter a valid quantity greater than 0');
+      alertFunction('Please enter a valid quantity greater than 0');
       return;
     }
 
@@ -317,11 +319,11 @@ const Inventory: React.FC = () => {
       setShowAdjustForm(false);
       fetchInventory();
       
-      alert('Stock adjusted successfully!');
+      alertFunction('Stock adjusted successfully!');
     } catch (error) {
       console.error('Error adjusting stock:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error adjusting stock: ${errorMessage}`);
+      alertFunction(`Error adjusting stock: ${errorMessage}`);
     }
   };
 
@@ -339,7 +341,7 @@ const Inventory: React.FC = () => {
     e.preventDefault();
     
     if (!inventoryForm.product_id || !inventoryForm.branch_id || !inventoryForm.quantity) {
-      alert('Please fill all fields');
+      alertFunction('Please fill all fields');
       return;
     }
 
@@ -348,7 +350,7 @@ const Inventory: React.FC = () => {
       const selectedProduct = products.find(p => p.id === inventoryForm.product_id);
       
       if (!selectedProduct) {
-        alert('Selected product not found');
+        alertFunction('Selected product not found');
         return;
       }
 
@@ -384,11 +386,11 @@ const Inventory: React.FC = () => {
       setShowAddInventoryForm(false);
       fetchInventory();
       
-      alert('Inventory added successfully!');
+      alertFunction('Inventory added successfully!');
     } catch (error) {
       console.error('Error adding inventory:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error adding inventory: ${errorMessage}`);
+      alertFunction(`Error adding inventory: ${errorMessage}`);
     }
   };
 
@@ -415,11 +417,11 @@ const Inventory: React.FC = () => {
       if (error) throw error;
       
       fetchInventory();
-      alert('Inventory record deleted successfully!');
+      alertFunction('Inventory record deleted successfully!');
     } catch (error) {
       console.error('Error deleting inventory:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error deleting inventory: ${errorMessage}`);
+      alertFunction(`Error deleting inventory: ${errorMessage}`);
     }
   };
 

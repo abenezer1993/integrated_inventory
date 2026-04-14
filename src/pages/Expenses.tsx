@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useSupabase } from '../contexts/SupabaseContext';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useSupabase } from '../contexts/SupabaseContext';
 
 interface Expense {
   id?: string;
@@ -206,7 +208,7 @@ function Expenses() {
 
   const addExpenseToMultiple = () => {
     if (!description || !amount) {
-      alert('Please fill in at least Description and Amount before adding to list');
+      alertFunction('Please fill in at least Description and Amount before adding to list');
       return;
     }
 
@@ -252,7 +254,7 @@ function Expenses() {
 
         if (error) throw error;
         
-        alert(`Successfully added ${multipleExpenses.length} expenses!`);
+        alertFunction(`Successfully added ${multipleExpenses.length} expenses!`);
         setMultipleExpenses([]);
         setSelectedOrder('');
         setShowAddModal(false);
@@ -261,7 +263,7 @@ function Expenses() {
         fetchWoodData();
       } catch (error) {
         console.error('Error adding multiple expenses:', error);
-        alert('Error adding expenses. Please try again.');
+        alertFunction('Error adding expenses. Please try again.');
       }
     } else {
       // Save single expense
@@ -280,7 +282,7 @@ function Expenses() {
 
         if (error) throw error;
         
-        alert('Expense added successfully!');
+        alertFunction('Expense added successfully!');
         setSelectedOrder('');
         setDescription('');
         setAmount('');
@@ -292,7 +294,7 @@ function Expenses() {
         fetchWoodData();
       } catch (error) {
         console.error('Error adding expense:', error);
-        alert('Error adding expense. Please try again.');
+        alertFunction('Error adding expense. Please try again.');
       }
     }
   };
@@ -308,13 +310,13 @@ function Expenses() {
 
       if (error) throw error;
       
-      alert('Expense deleted successfully!');
+      alertFunction('Expense deleted successfully!');
       fetchExpenses();
       fetchGypsumData();
       fetchWoodData();
     } catch (error) {
       console.error('Error deleting expense:', error);
-      alert('Error deleting expense. Please try again.');
+      alertFunction('Error deleting expense. Please try again.');
     }
   };
 

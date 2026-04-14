@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useSupabase } from '../contexts/SupabaseContext';
+import { useAuth } from '../contexts/AuthContext-debug';
+import { alertFunction } from '../utils/alerts';
 import { useNavigate } from 'react-router-dom';
+import { useSupabase } from '../contexts/SupabaseContext';
 
 interface DashboardStats {
   totalInventory: number;
@@ -50,7 +52,7 @@ const Dashboard: React.FC = () => {
         break;
       case 'View Reports':
         // Navigate to reports or show reports modal
-        alert('Reports feature coming soon!');
+        alertFunction('Reports feature coming soon!');
         break;
       default:
         break;
@@ -59,7 +61,7 @@ const Dashboard: React.FC = () => {
 
   const handleViewAllActivities = () => {
     // Navigate to a detailed activities page or show modal
-    alert('Detailed activities view coming soon!');
+    alertFunction('Detailed activities view coming soon!');
   };
 
   const fetchStats = async () => {

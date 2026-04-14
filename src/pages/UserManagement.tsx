@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { User, UserRole } from '../types';
@@ -64,7 +66,7 @@ const UserManagement: React.FC = () => {
     e.preventDefault();
     
     if (!email || !name || !password) {
-      alert('Please fill in all required fields');
+      alertFunction('Please fill in all required fields');
       return;
     }
 
@@ -101,10 +103,10 @@ const UserManagement: React.FC = () => {
       setShowAddUserForm(false);
       
       fetchUsers();
-      alert('User created successfully!');
+      alertFunction('User created successfully!');
     } catch (error) {
       console.error('Error creating user:', error);
-      alert('Error creating user. Please try again.');
+      alertFunction('Error creating user. Please try again.');
     }
   };
 
@@ -112,7 +114,7 @@ const UserManagement: React.FC = () => {
     e.preventDefault();
     
     if (!editingUser || !email || !name) {
-      alert('Please fill in all required fields');
+      alertFunction('Please fill in all required fields');
       return;
     }
 
@@ -136,10 +138,10 @@ const UserManagement: React.FC = () => {
       setBranchId('');
       
       fetchUsers();
-      alert('User updated successfully!');
+      alertFunction('User updated successfully!');
     } catch (error) {
       console.error('Error updating user:', error);
-      alert('Error updating user. Please try again.');
+      alertFunction('Error updating user. Please try again.');
     }
   };
 
@@ -163,10 +165,10 @@ const UserManagement: React.FC = () => {
       if (authError) throw authError;
 
       fetchUsers();
-      alert('User deleted successfully!');
+      alertFunction('User deleted successfully!');
     } catch (error) {
       console.error('Error deleting user:', error);
-      alert('Error deleting user. Please try again.');
+      alertFunction('Error deleting user. Please try again.');
     }
   };
 

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 
@@ -274,19 +276,19 @@ const Sales: React.FC = () => {
     e.preventDefault();
     
     if (!formData.branch_id || !formData.customer_name) {
-      alert('Please fill all required fields');
+      alertFunction('Please fill all required fields');
       return;
     }
 
     // Validate that we have either a single product or cart items
     if (!formData.product_id && cartItems.length === 0) {
-      alert('Please add at least one product');
+      alertFunction('Please add at least one product');
       return;
     }
 
     // If we have a single product (not in cart), validate it
     if (formData.product_id && cartItems.length === 0 && !formData.quantity) {
-      alert('Please enter quantity');
+      alertFunction('Please enter quantity');
       return;
     }
 
@@ -297,7 +299,7 @@ const Sales: React.FC = () => {
       if (formData.product_id && cartItems.length === 0 && formData.quantity) {
         const product = products.find((p: any) => p.id === formData.product_id);
         if (!product) {
-          alert('Product not found');
+          alertFunction('Product not found');
           return;
         }
 
@@ -324,13 +326,13 @@ const Sales: React.FC = () => {
       for (const item of saleItems) {
         const inventoryExists = await ensureInventoryRecord(item.product_id, formData.branch_id);
         if (!inventoryExists) {
-          alert(`No inventory record found for ${item.product_name}. Please add inventory through the Inventory page first.`);
+          alertFunction(`No inventory record found for ${item.product_name}. Please add inventory through the Inventory page first.`);
           return;
         }
         
         const availableStock = getAvailableStock(item.product_id, formData.branch_id);
         if (item.quantity > availableStock) {
-          alert(`Insufficient stock for ${item.product_name}! Available: ${availableStock}, Requested: ${item.quantity}`);
+          alertFunction(`Insufficient stock for ${item.product_name}! Available: ${availableStock}, Requested: ${item.quantity}`);
           return;
         }
       }
@@ -410,7 +412,7 @@ const Sales: React.FC = () => {
       await fetchSales();
       await fetchInventory();
       
-      alert('Sale recorded successfully!');
+      alertFunction('Sale recorded successfully!');
     } catch (error) {
       let errorMessage = 'Unknown error occurred';
       
@@ -429,19 +431,19 @@ const Sales: React.FC = () => {
         errorMessage = error;
       }
       
-      alert(`Error recording sale: ${errorMessage}`);
+      alertFunction(`Error recording sale: ${errorMessage}`);
     }
   };
 
   const addToCart = () => {
     if (!formData.product_id || !formData.quantity || !formData.branch_id) {
-      alert('Please select product, branch, and quantity');
+      alertFunction('Please select product, branch, and quantity');
       return;
     }
 
     const product = products.find(p => p.id === formData.product_id);
     if (!product) {
-      alert('Product not found');
+      alertFunction('Product not found');
       return;
     }
 
@@ -449,7 +451,7 @@ const Sales: React.FC = () => {
     const availableStock = getAvailableStock(formData.product_id, formData.branch_id);
     
     if (quantity > availableStock) {
-      alert(`Insufficient stock! Available: ${availableStock}, Requested: ${quantity}`);
+      alertFunction(`Insufficient stock! Available: ${availableStock}, Requested: ${quantity}`);
       return;
     }
 
@@ -493,7 +495,7 @@ const Sales: React.FC = () => {
 
   const addCurrentProductToCart = () => {
     if (!formData.product_id || !formData.quantity) {
-      alert('Please select product and quantity first');
+      alertFunction('Please select product and quantity first');
       return;
     }
     addToCart();
@@ -636,10 +638,10 @@ const Sales: React.FC = () => {
       fetchSales(1);
       fetchInventory();
       
-      alert('Sale deleted successfully! Inventory quantity restored.');
+      alertFunction('Sale deleted successfully! Inventory quantity restored.');
     } catch (error: any) {
       console.error('Error deleting sale:', error);
-      alert(`Error deleting sale: ${error.message}`);
+      alertFunction(`Error deleting sale: ${error.message}`);
     }
   };
 

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { Product, ProductCategory } from '../types';
@@ -98,11 +100,11 @@ const Products: React.FC = () => {
         fetchProducts();
       }, 500);
       
-      alert('Product added successfully!');
+      alertFunction('Product added successfully!');
     } catch (error) {
       console.error('Error adding product:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error adding product: ${errorMessage}`);
+      alertFunction(`Error adding product: ${errorMessage}`);
     }
   };
 
@@ -149,11 +151,11 @@ const Products: React.FC = () => {
         fetchProducts();
       }, 500);
       
-      alert('Product updated successfully!');
+      alertFunction('Product updated successfully!');
     } catch (error) {
       console.error('Error updating product:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error updating product: ${errorMessage}`);
+      alertFunction(`Error updating product: ${errorMessage}`);
     }
   };
 
@@ -174,7 +176,7 @@ const Products: React.FC = () => {
         fetchProducts();
       }, 500);
       
-      alert('Product deleted successfully!');
+      alertFunction('Product deleted successfully!');
     } catch (error: any) {
       console.error('Error deleting product:', error);
       
@@ -195,7 +197,7 @@ const Products: React.FC = () => {
         }
       }
       
-      alert(`Error deleting product: ${errorMessage}`);
+      alertFunction(`Error deleting product: ${errorMessage}`);
     }
   };
 
@@ -216,11 +218,11 @@ const Products: React.FC = () => {
         fetchProducts();
       }, 500);
       
-      alert('Product deactivated successfully!');
+      alertFunction('Product deactivated successfully!');
     } catch (error: any) {
       console.error('Error deactivating product:', error);
       const errorMessage = error?.message || 'Unknown error occurred';
-      alert(`Error deactivating product: ${errorMessage}`);
+      alertFunction(`Error deactivating product: ${errorMessage}`);
     }
   };
 

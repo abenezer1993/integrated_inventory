@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useSupabase } from '../contexts/SupabaseContext';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useSupabase } from '../contexts/SupabaseContext';
 
 interface Branch {
   id: string;
@@ -117,11 +119,11 @@ const Branches: React.FC = () => {
         fetchBranches();
       }, 500);
       
-      alert(editingBranch ? 'Branch updated successfully!' : 'Branch added successfully!');
+      alertFunction(editingBranch ? 'Branch updated successfully!' : 'Branch added successfully!');
     } catch (error) {
       console.error('Error saving branch:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error saving branch: ${errorMessage}`);
+      alertFunction(`Error saving branch: ${errorMessage}`);
     }
   };
 
@@ -151,12 +153,12 @@ const Branches: React.FC = () => {
 
       if (error) throw error;
 
-      alert('Branch deleted successfully!');
+      alertFunction('Branch deleted successfully!');
       fetchBranches();
     } catch (error) {
       console.error('Error deleting branch:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Error deleting branch: ${errorMessage}`);
+      alertFunction(`Error deleting branch: ${errorMessage}`);
     }
   };
 

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { Product, ManufacturingOrder, ManufacturingExpense } from '../types';
@@ -110,7 +112,7 @@ const Manufacturing: React.FC = () => {
     e.preventDefault();
     
     if (!selectedCategory || !productName || !quantity || !selectedBranch) {
-      alert('Please fill in all required fields: category, product name, quantity, and branch');
+      alertFunction('Please fill in all required fields: category, product name, quantity, and branch');
       return;
     }
 
@@ -211,7 +213,7 @@ const Manufacturing: React.FC = () => {
       setShowAddForm(false);
       fetchManufacturingOrders();
       
-      alert('Production recorded successfully!');
+      alertFunction('Production recorded successfully!');
     } catch (error: any) {
       console.error('Error recording production:', error);
       
@@ -237,12 +239,12 @@ const Manufacturing: React.FC = () => {
         code: error?.code
       });
       
-      alert(errorMessage);
+      alertFunction(errorMessage);
     }
   };
 
   const handleViewOrder = (order: any) => {
-    alert(`View Order: ${order.order_number}\n\nProduct: ${order.product_name}\nQuantity: ${order.quantity_produced}\nStatus: ${order.status}\nNotes: ${order.notes || 'No notes'}`);
+    alertFunction(`View Order: ${order.order_number}\n\nProduct: ${order.product_name}\nQuantity: ${order.quantity_produced}\nStatus: ${order.status}\nNotes: ${order.notes || 'No notes'}`);
   };
 
   const handleEditOrder = (order: any) => {
@@ -267,11 +269,11 @@ const Manufacturing: React.FC = () => {
 
       if (error) throw error;
       
-      alert('Order updated successfully!');
+      alertFunction('Order updated successfully!');
       fetchManufacturingOrders();
     } catch (error: any) {
       console.error('Error updating order:', error);
-      alert('Error updating order. Please try again.');
+      alertFunction('Error updating order. Please try again.');
     }
   };
 
@@ -309,7 +311,7 @@ const Manufacturing: React.FC = () => {
         
         if (createError || !newProduct) {
           console.error('Error creating manufactured product:', createError);
-          alert('Error creating manufactured product. Please try again.');
+          alertFunction('Error creating manufactured product. Please try again.');
           return;
         }
         
@@ -324,7 +326,7 @@ const Manufacturing: React.FC = () => {
         .single();
       
       if (existingInventory && !inventoryCheckError) {
-        alert('This product has already been transferred to inventory.');
+        alertFunction('This product has already been transferred to inventory.');
         return;
       }
       
@@ -340,17 +342,17 @@ const Manufacturing: React.FC = () => {
 
       if (error) {
         console.error('Error transferring to inventory:', error);
-        alert('Error transferring to inventory. Please try again.');
+        alertFunction('Error transferring to inventory. Please try again.');
         return;
       }
 
       if (data) {
-        alert('Product transferred to inventory successfully!');
+        alertFunction('Product transferred to inventory successfully!');
         fetchManufacturingOrders();
       }
     } catch (error: any) {
       console.error('Error in handleTransferToInventory:', error);
-      alert('Error transferring to inventory. Please try again.');
+      alertFunction('Error transferring to inventory. Please try again.');
     }
   };
 
@@ -446,14 +448,14 @@ const Manufacturing: React.FC = () => {
       
       console.log('=== DELETE COMPLETED ===');
       console.log('Manufacturing order and related data deleted successfully');
-      alert('Order deleted successfully!');
+      alertFunction('Order deleted successfully!');
       
       console.log('Step 5: Refreshing data...');
       await fetchManufacturingOrders();
       
     } catch (error: any) {
       console.error('Error in deleteManufacturingOrder:', error);
-      alert(`Error deleting order: ${error.message || 'Unknown error'}. Please try again.`);
+      alertFunction(`Error deleting order: ${error.message || 'Unknown error'}. Please try again.`);
     }
   };
 
