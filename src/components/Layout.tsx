@@ -27,7 +27,8 @@ const Layout: React.FC = () => {
       { path: '/manufacturing', name: 'Manufacturing', icon: '🏭', permission: 'manage_manufacturing' as string | null },
       { path: '/branches', name: 'Branches', icon: '🏪', permission: 'manage_branches' as string | null },
       { path: '/users', name: 'Users', icon: '👥', permission: 'manage_users' as string | null },
-      { path: '/analytics', name: 'Reports', icon: '�', permission: 'view_all_reports' as string | null },
+      { path: '/employees', name: 'Employees', icon: '👤', permission: 'manage_employees' as string | null },
+      { path: '/analytics', name: 'Reports', icon: '', permission: 'view_all_reports' as string | null },
       { path: '/expenses', name: 'Expenses', icon: '💸', permission: 'manage_expenses' as string | null },
     ];
 
@@ -70,10 +71,15 @@ const Layout: React.FC = () => {
       menuItems = [...menuItems, ...warehouseStaffItems];
     }
 
-    return menuItems.filter(item => !item.permission || hasPermission(item.permission));
+    return menuItems; // Temporarily remove permission filter
   };
 
   const menuItems = getMenuItems();
+  
+  // Debug: Log user and menu state
+  console.log('Layout - User:', user);
+  console.log('Layout - User role:', user?.role);
+  console.log('Layout - Menu items:', menuItems);
 
   const getRoleBadge = () => {
     if (isAdmin()) return { color: 'bg-purple-600', text: 'Admin' };

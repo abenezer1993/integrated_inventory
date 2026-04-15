@@ -20,6 +20,12 @@ const Manufacturing: React.FC = () => {
   const [productName, setProductName] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
   const [branches, setBranches] = useState<any[]>([]);
+  const [manufacturedInventory, setManufacturedInventory] = useState<any[]>([]);
+  const [selectedInventoryCategory, setSelectedInventoryCategory] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'overview' | 'inventory' | 'history' | 'employee_performance'>('overview');
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+  const [materialsUsed, setMaterialsUsed] = useState<{ [key: string]: number }>({});
 
   console.log('🏭 Manufacturing component rendering');
   console.log('🏭 User in Manufacturing:', user);
@@ -34,10 +40,123 @@ const Manufacturing: React.FC = () => {
   // Test permission check
   console.log('Testing manage_manufacturing permission:', hasPermission('manage_manufacturing'));
 
+  const fetchManufacturedInventory = async () => {
+    try {
+      const { data, error } = await supabase!
+        .from('inventory')
+        .select('*')
+        .eq('product_type', 'manufactured')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setManufacturedInventory(data || []);
+    } catch (error: any) {
+      console.error('Error fetching manufactured inventory:', error);
+    }
+  };
+
+  // Helper functions for category filtering
+  const getUniqueCategories = () => {
+    const categorySet = new Set(manufacturedInventory.map(item => item.category).filter(Boolean));
+    return Array.from(categorySet);
+  };
+
+  const getFilteredInventory = () => {
+    if (selectedInventoryCategory === 'all') {
+      return manufacturedInventory;
+    }
+    return manufacturedInventory.filter(item => item.category === selectedInventoryCategory);
+  };
+
+  const getCategoryCount = (category: string) => {
+    if (category === 'all') {
+      return manufacturedInventory.length;
+    }
+    return manufacturedInventory.filter(item => item.category === category).length;
+  };
+
+  // Salary calculation functions
+  const calculateWeeklySalary = (employeeId: string) => {
+    const employeeOrders = manufacturingOrders.filter(order => order.employee_id === employeeId);
+    const totalProducts = employeeOrders.reduce((sum, order) => sum + order.quantity_produced, 0);
+    const daysWorked = 7; // Weekly period
+    const dailyAverage = totalProducts / daysWorked;
+    
+    // Base salary calculation (customize rates as needed)
+    const gypsumRate = 50; // ETB per gypsum product
+    const woodRate = 75; // ETB per wood product
+    
+    const totalEarnings = employeeOrders.reduce((sum, order) => {
+      if (order.product_category === 'gypsum') {
+        return sum + (order.quantity_produced * gypsumRate);
+      } else if (order.product_category === 'wood') {
+        return sum + (order.quantity_produced * woodRate);
+      }
+      return sum;
+    }, 0);
+    
+    return {
+      totalProducts,
+      dailyAverage,
+      weeklySalary: totalEarnings,
+      dailySalary: totalEarnings / daysWorked
+    };
+  };
+
+  const getMaterialCosts = (order: any) => {
+    // Material costs per unit (customize as needed)
+    const gypsumMaterials = {
+      'gypsum_powder': 15, // ETB per packet
+      'additives': 5, // ETB per unit
+      'packaging': 2 // ETB per unit
+    };
+    
+    const woodMaterials = {
+      'wood_planks': 120, // ETB per plank
+      'screws': 3, // ETB per kg
+      'finishing': 10 // ETB per unit
+    };
+    
+    if (order.category === 'gypsum') {
+      return {
+        gypsum_powder: order.quantity_produced * gypsumMaterials.gypsum_powder,
+        additives: order.quantity_produced * gypsumMaterials.additives,
+        packaging: order.quantity_produced * gypsumMaterials.packaging,
+        total: order.quantity_produced * (gypsumMaterials.gypsum_powder + gypsumMaterials.additives + gypsumMaterials.packaging)
+      };
+    } else if (order.category === 'wood') {
+      return {
+        wood_planks: order.quantity_produced * woodMaterials.wood_planks,
+        screws: order.quantity_produced * woodMaterials.screws,
+        finishing: order.quantity_produced * woodMaterials.finishing,
+        total: order.quantity_produced * (woodMaterials.wood_planks + woodMaterials.screws + woodMaterials.finishing)
+      };
+    }
+    
+    return { total: 0 };
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase!
+        .from('employees')
+        .select('*')
+        .eq('status', 'active')
+        .order('full_name');
+      
+      if (error) throw error;
+      setEmployees(data || []);
+    } catch (error: any) {
+      console.error('Error fetching employees:', error);
+    }
+  };
+
   useEffect(() => {
     if (!authLoading) {
       fetchManufacturingOrders();
       fetchBranches();
+      fetchManufacturedInventory();
+      fetchEmployees();
     }
   }, [authLoading]);
 
@@ -111,14 +230,19 @@ const Manufacturing: React.FC = () => {
   const handleAddProduction = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedCategory || !productName || !quantity || !selectedBranch) {
-      alertFunction('Please fill in all required fields: category, product name, quantity, and branch');
+    if (!selectedCategory || !productName || !quantity || !selectedBranch || !selectedEmployee) {
+      alertFunction('Please fill in all required fields: category, product name, quantity, branch, and employee');
       return;
     }
 
     try {
       // Generate order number
       const orderNumber = `MFG${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      
+      const materialCosts = getMaterialCosts({
+        category: selectedCategory,
+        quantity_produced: parseInt(quantity)
+      });
       
       console.log('Creating manufacturing order:', {
         orderNumber,
@@ -128,7 +252,9 @@ const Manufacturing: React.FC = () => {
         status: 'completed',
         completed_at: new Date().toISOString(),
         notes: notes,
-        product_category: selectedCategory
+        product_category: selectedCategory,
+        employee_id: selectedEmployee,
+        materials_used: materialCosts
       });
       
       // Create manufacturing order using RPC to bypass RLS
@@ -507,54 +633,191 @@ const Manufacturing: React.FC = () => {
         </div>
       </div>
 
-      {/* Production Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">🏭</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Today's Production</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {manufacturingOrders
-                  .filter(order => new Date(order.created_at).toDateString() === new Date().toDateString())
-                  .reduce((sum, order) => sum + order.quantity_produced, 0)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">📦</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Production Records</p>
-              <p className="text-2xl font-bold text-gray-900">{manufacturingOrders.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">📈</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">This Month</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {manufacturingOrders
-                  .filter(order => new Date(order.created_at).getMonth() === new Date().getMonth())
-                  .reduce((sum, order) => sum + order.quantity_produced, 0)}
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="flex space-x-8">
+          {[
+            { id: 'overview', label: 'Overview', icon: '0' },
+            { id: 'inventory', label: 'Manufactured Inventory', icon: '0' },
+            { id: 'history', label: 'Production History', icon: '0' },
+            { id: 'employee_performance', label: 'Employee Performance', icon: '👤' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={'py-2 px-1 border-b-2 font-medium text-sm ' + (
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              )}
+            >
+              <span className="mr-2">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* Production History */}
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">0</span>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Today's Production</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {manufacturingOrders
+                      .filter(order => new Date(order.created_at).toDateString() === new Date().toDateString())
+                      .reduce((sum, order) => sum + order.quantity_produced, 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">0</span>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Production Records</p>
+                  <p className="text-2xl font-bold text-gray-900">{manufacturingOrders.length}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">0</span>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">This Month</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {manufacturingOrders
+                      .filter(order => new Date(order.created_at).getMonth() === new Date().getMonth())
+                      .reduce((sum, order) => sum + order.quantity_produced, 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Tab */}
+      {activeTab === 'inventory' && (
+        <div className="space-y-6">
+          {/* Manufactured Products Inventory */}
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-gray-900">Manufactured Products Inventory</h3>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">Total Items:</span>
+            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
+              {manufacturedInventory.reduce((sum, item) => sum + item.quantity, 0)}
+            </span>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Product Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Category
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Quantity
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Unit
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Unit Cost
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total Value
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Branch
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {manufacturedInventory.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                    <div className="flex flex-col items-center">
+                      <span className="text-3xl mb-2">0</span>
+                      <span>No manufactured products in inventory</span>
+                      <span className="text-sm text-gray-400 mt-1">Products will appear here after production is recorded</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                manufacturedInventory.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{item.product_name}</div>
+                      {item.description && (
+                        <div className="text-sm text-gray-500">{item.description}</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        {item.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{item.quantity}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {item.unit}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      ETB {item.unit_cost?.toFixed(2) || '0.00'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        ETB {((item.quantity || 0) * (item.unit_cost || 0)).toFixed(2)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {item.branch_name || 'Unassigned'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        item.quantity > 0 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {item.quantity > 0 ? 'In Stock' : 'Out of Stock'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+        </div>
+      )}
+
+      {/* History Tab */}
+      {activeTab === 'history' && (
+        <div className="space-y-6">
+          {/* Production History */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">Production History</h3>
@@ -686,6 +949,176 @@ const Manufacturing: React.FC = () => {
           </table>
         </div>
       </div>
+        </div>
+      )}
+
+      {/* Employee Performance Tab */}
+      {activeTab === 'employee_performance' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Employee Performance Overview */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Employee Performance Overview</h3>
+              <div className="space-y-4">
+                {employees.map((employee) => {
+                  const salary = calculateWeeklySalary(employee.id);
+                  return (
+                    <div key={employee.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-medium text-gray-900">{employee.full_name}</h4>
+                          <p className="text-sm text-gray-500">{employee.position}</p>
+                        </div>
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                          {employee.department}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-600">Products This Week</p>
+                          <p className="font-bold text-lg">{salary.totalProducts}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Daily Average</p>
+                          <p className="font-bold text-lg">{salary.dailyAverage.toFixed(1)}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Daily Salary</p>
+                          <p className="font-bold text-green-600">ETB {salary.dailySalary.toFixed(0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Weekly Salary</p>
+                          <p className="font-bold text-green-600">ETB {salary.weeklySalary.toFixed(0)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Material Usage Summary */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Material Usage Summary</h3>
+              <div className="space-y-4">
+                {['gypsum', 'wood'].map((category) => {
+                  const categoryOrders = manufacturingOrders.filter(order => order.product_category === category);
+                  const totalProducts = categoryOrders.reduce((sum, order) => sum + order.quantity_produced, 0);
+                  const totalMaterialCosts = categoryOrders.reduce((sum, order) => {
+                    const costs = getMaterialCosts(order);
+                    return sum + (costs.total || 0);
+                  }, 0);
+                  
+                  return (
+                    <div key={category} className="border rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900 capitalize mb-3">{category} Work</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Products:</span>
+                          <span className="font-bold">{totalProducts}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Material Costs:</span>
+                          <span className="font-bold text-red-600">ETB {totalMaterialCosts.toFixed(0)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Cost per Product:</span>
+                          <span className="font-bold">
+                            ETB {totalProducts > 0 ? (totalMaterialCosts / totalProducts).toFixed(0) : '0'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Performance Table */}
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Detailed Production Records</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Employee
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Product
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Category
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Quantity
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Material Cost
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Earnings
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {manufacturingOrders
+                    .filter(order => order.employee_id)
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                    .slice(0, 20)
+                    .map((order) => {
+                      const employee = employees.find(emp => emp.id === order.employee_id);
+                      const materialCosts = getMaterialCosts(order);
+                      const gypsumRate = 50;
+                      const woodRate = 75;
+                      const earnings = order.product_category === 'gypsum' 
+                        ? order.quantity_produced * gypsumRate 
+                        : order.product_category === 'wood' 
+                        ? order.quantity_produced * woodRate 
+                        : 0;
+                      
+                      return (
+                        <tr key={order.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {employee?.full_name || 'Unknown'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {order.product_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              {order.product_category}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {order.quantity_produced}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                            ETB {(materialCosts.total || 0).toFixed(0)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                            ETB {earnings.toFixed(0)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(order.created_at).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Production Modal */}
       {showAddForm && (
@@ -724,6 +1157,25 @@ const Manufacturing: React.FC = () => {
                   {branches.map((branch: any) => (
                     <option key={branch.id} value={branch.id}>
                       {branch.name} - {branch.location}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Employee <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select employee</option>
+                  {employees.map((employee: any) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.full_name} - {employee.position}
                     </option>
                   ))}
                 </select>

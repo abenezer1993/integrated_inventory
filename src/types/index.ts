@@ -144,6 +144,7 @@ export interface ManufacturingOrder {
   id: string;
   order_number: string;
   branch_id: string;
+  employee_id?: string;
   finished_product_id?: string;
   product_name?: string;
   quantity_produced: number;
@@ -153,6 +154,7 @@ export interface ManufacturingOrder {
   notes?: string;
   product_category?: string;
   product_type?: string;
+  materials_used?: any; // Store material costs
   created_at: string;
   updated_at: string;
   branches?: {
