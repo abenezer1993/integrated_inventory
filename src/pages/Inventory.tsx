@@ -67,6 +67,7 @@ const Inventory: React.FC = () => {
   useEffect(() => {
     fetchInventory();
     fetchBranches();
+    fetchProducts();
   }, []);
 
   const fetchBranches = async () => {
@@ -78,6 +79,35 @@ const Inventory: React.FC = () => {
       setBranches(data || []);
     } catch (error) {
       console.error('Error fetching branches:', error);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      // Fetch purchased products
+      const { data: purchasedProducts, error: purchasedError } = await supabase!
+        .from('products')
+        .select('id, name, sku, unit, selling_price, low_stock_threshold')
+        .eq('is_active', true);
+      
+      if (purchasedError) throw purchasedError;
+      
+      // Fetch manufactured products
+      const { data: manufacturedProducts, error: manufacturedError } = await supabase!
+        .from('manufactured_products')
+        .select('id, name, sku, unit, cost_price, selling_price, low_stock_threshold');
+      
+      if (manufacturedError) throw manufacturedError;
+      
+      // Combine both product types
+      const allProducts = [
+        ...(purchasedProducts || []).map(p => ({ ...p, type: 'purchased' })),
+        ...(manufacturedProducts || []).map(p => ({ ...p, type: 'manufactured' }))
+      ];
+      
+      setProducts(allProducts);
+    } catch (error) {
+      console.error('Error fetching products:', error);
     }
   };
 
@@ -405,24 +435,33 @@ const Inventory: React.FC = () => {
 
   const handleDeleteInventory = async (item: InventoryItem) => {
     const productName = item.product_name || 'Unknown Product';
-    showConfirmation({title: 'Delete Inventory', message: `Are you sure you want to delete the inventory record for "${productName}"? This action cannot be undone.`, onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
-    return;
     
-    try {
-      const { error } = await supabase!
-        .from('inventory')
-        .delete()
-        .eq('id', item.id);
+    const deleteInventory = async () => {
+      try {
+        const { error } = await supabase!
+          .from('inventory')
+          .delete()
+          .eq('id', item.id);
 
-      if (error) throw error;
-      
-      fetchInventory();
-      alertFunction('Inventory record deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting inventory:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alertFunction(`Error deleting inventory: ${errorMessage}`);
-    }
+        if (error) throw error;
+        
+        fetchInventory();
+        alertFunction('Inventory record deleted successfully!');
+      } catch (error: any) {
+        console.error('Error deleting inventory:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        alertFunction(`Error deleting inventory: ${errorMessage}`);
+      }
+    };
+
+    showConfirmation({
+      title: 'Delete Inventory', 
+      message: `Are you sure you want to delete the inventory record for "${productName}"? This action cannot be undone.`, 
+      onConfirm: deleteInventory, 
+      type: 'danger', 
+      confirmText: 'Delete', 
+      cancelText: 'Cancel'
+    });
   };
 
   if (loading) {

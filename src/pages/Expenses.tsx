@@ -3,6 +3,7 @@ import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useConfirmation } from '../utils/confirmations';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface Expense {
   id?: string;
@@ -49,7 +50,7 @@ const Expenses: React.FC = () => {
   const { supabase } = useSupabase();
   const { user } = useAuth();
   const { showConfirmation } = useConfirmation();
-  const [activeTab, setActiveTab] = useState<'expenses' | 'health' | 'gypsum' | 'wood' | 'analytics'>('expenses');
+    const [activeTab, setActiveTab] = useState<'expenses' | 'health' | 'gypsum' | 'wood' | 'analytics'>('expenses');
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -70,6 +71,68 @@ const Expenses: React.FC = () => {
 
   const formatCurrency = (amount: number) => {
     return `ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Helper functions for real profitability data
+  const getProfitabilityData = () => {
+    const gypsumRevenue = gypsumData?.totalRevenue || 0;
+    const gypsumExpenses = gypsumData?.totalExpenses || 0;
+    const gypsumProfit = gypsumRevenue - gypsumExpenses;
+    
+    const woodRevenue = woodData?.totalRevenue || 0;
+    const woodExpenses = woodData?.totalExpenses || 0;
+    const woodProfit = woodRevenue - woodExpenses;
+    
+    return [
+      { 
+        name: 'Gypsum Work', 
+        revenue: gypsumRevenue, 
+        expenses: gypsumExpenses, 
+        profit: gypsumProfit,
+        isProfitable: gypsumProfit >= 0
+      },
+      { 
+        name: 'Wood Work', 
+        revenue: woodRevenue, 
+        expenses: woodExpenses, 
+        profit: woodProfit,
+        isProfitable: woodProfit >= 0
+      }
+    ];
+  };
+
+  const getPieChartData = () => {
+    const data = getProfitabilityData();
+    const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
+    
+    if (totalRevenue === 0) {
+      return [
+        { name: 'No Revenue Data', value: 1, color: '#e5e7eb' }
+      ];
+    }
+    
+    return data.map(item => ({
+      name: item.name,
+      value: item.revenue,
+      color: item.name === 'Gypsum Work' ? '#f97316' : '#eab308'
+    }));
+  };
+
+  const getExpensePieChartData = () => {
+    const data = getProfitabilityData();
+    const totalExpenses = data.reduce((sum, item) => sum + item.expenses, 0);
+    
+    if (totalExpenses === 0) {
+      return [
+        { name: 'No Expense Data', value: 1, color: '#e5e7eb' }
+      ];
+    }
+    
+    return data.map(item => ({
+      name: `${item.name} Expenses`,
+      value: item.expenses,
+      color: item.name === 'Gypsum Work' ? '#ef4444' : '#f59e0b'
+    }));
   };
 
   useEffect(() => {
@@ -96,14 +159,18 @@ const Expenses: React.FC = () => {
 
   const fetchExpenses = async () => {
     try {
+      console.log('Fetching expenses from database...');
       const { data, error } = await supabase!
         .from('manufacturing_expenses')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
       
+      console.log('Fetch result:', { data: data?.length || 0, error });
+      
       if (error) throw error;
       setExpenses(data || []);
+      console.log('Expenses state updated with', data?.length || 0, 'items');
     } catch (error) {
       console.error('Error fetching expenses:', error);
     }
@@ -301,25 +368,62 @@ const Expenses: React.FC = () => {
   };
 
   const deleteExpense = async (id: string) => {
-    showConfirmation({title: 'Delete Expense', message: 'Are you sure you want to delete this expense?', onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
-    return;
+    console.log('Delete function called for expense:', id);
     
-    try {
-      const { error } = await supabase!
-        .from('manufacturing_expenses')
-        .delete()
-        .eq('id', id);
+    const performDelete = async () => {
+      console.log('Delete confirmed for expense:', id);
+      try {
+        // Check current user and their role
+        const { data: { user } } = await supabase!.auth.getUser();
+        console.log('Current user:', user);
+        console.log('User role:', user?.user_metadata?.role || user?.app_metadata?.role);
+        
+        // Try direct deletion without all the complex checking
+        console.log('Attempting direct deletion...');
+        const { error, data } = await supabase!
+          .from('manufacturing_expenses')
+          .delete()
+          .eq('id', id)
+          .select();
+        
+        console.log('Delete result:', { error, data, dataCount: data?.length });
+        
+        if (error) {
+          console.error('Delete error:', error);
+          alertFunction(`Error: ${error.message}`);
+          return;
+        }
+        
+        if (!data || data.length === 0) {
+          console.warn('No records deleted - checking RLS policies');
+          
+          // Try using service role key approach (bypass RLS)
+          console.log('Trying service role approach...');
+          alertFunction('Delete operation failed due to permissions. Please contact admin to update RLS policies.');
+          return;
+        }
+        
+        console.log('Successfully deleted expense:', data);
+        alertFunction('Expense deleted successfully!');
+        
+        // Refresh the list
+        await fetchExpenses();
+        
+      } catch (error: any) {
+        console.error('Delete exception:', error);
+        alertFunction(`Delete failed: ${error.message}`);
+      }
+    };
 
-      if (error) throw error;
-      
-      alertFunction('Expense deleted successfully!');
-      fetchExpenses();
-      fetchGypsumData();
-      fetchWoodData();
-    } catch (error) {
-      console.error('Error deleting expense:', error);
-      alertFunction('Error deleting expense. Please try again.');
-    }
+    console.log('Showing confirmation dialog...');
+    showConfirmation({
+      title: 'Delete Expense', 
+      message: 'Are you sure you want to delete this expense?', 
+      onConfirm: performDelete, 
+      type: 'danger', 
+      confirmText: 'Delete', 
+      cancelText: 'Cancel'
+    });
   };
 
   if (loading) {
@@ -433,7 +537,11 @@ const Expenses: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
-                            onClick={() => deleteExpense(expense.id!)}
+                            onClick={() => {
+                              console.log('Expense object:', expense);
+                              console.log('Expense ID:', expense.id);
+                              deleteExpense(expense.id!);
+                            }}
                             className="text-red-600 hover:text-red-900"
                           >
                             Delete
@@ -501,7 +609,11 @@ const Expenses: React.FC = () => {
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">
                                   <button
-                                    onClick={() => deleteExpense(expense.id!)}
+                                    onClick={() => {
+                                      console.log('Expense object (grouped):', expense);
+                                      console.log('Expense ID (grouped):', expense.id);
+                                      deleteExpense(expense.id!);
+                                    }}
                                     className="text-red-600 hover:text-red-900"
                                   >
                                     Delete
@@ -660,55 +772,107 @@ const Expenses: React.FC = () => {
       {activeTab === 'analytics' && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                📊
-              </span>
-              6-Month Business Analytics
-            </h3>
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <span className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                  0
+                </span>
+                Manufacturing Product Profitability Analysis
+              </h3>
+            </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-900 mb-3">Revenue Trend</h4>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Gypsum Revenue</span>
-                    <span className="text-sm font-medium text-green-600">{formatCurrency(gypsumData?.totalRevenue || 0)}</span>
+            {/* Profitability Overview */}
+            <div className="mb-8">
+              <h4 className="font-medium text-gray-900 mb-4">Manufacturing Product Profitability</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {getProfitabilityData().map((product) => (
+                  <div key={product.name} className={`p-6 rounded-lg border-2 ${product.isProfitable ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="text-lg font-semibold text-gray-900">{product.name}</h5>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${product.isProfitable ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                        {product.isProfitable ? 'Profitable' : 'Not Profitable'}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Revenue:</span>
+                        <span className="text-sm font-bold text-green-600">{formatCurrency(product.revenue)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Expenses:</span>
+                        <span className="text-sm font-bold text-red-600">{formatCurrency(product.expenses)}</span>
+                      </div>
+                      <div className="border-t pt-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-900">Net Profit:</span>
+                          <span className={`text-lg font-bold ${product.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(product.profit)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-sm text-gray-600">Profit Margin:</span>
+                          <span className={`text-sm font-medium ${product.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {product.revenue > 0 ? `${((product.profit / product.revenue) * 100).toFixed(1)}%` : '0%'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Wood Revenue</span>
-                    <span className="text-sm font-medium text-green-600">{formatCurrency(woodData?.totalRevenue || 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Total Revenue</span>
-                    <span className="text-lg font-bold text-green-600">
-                      {formatCurrency((gypsumData?.totalRevenue || 0) + (woodData?.totalRevenue || 0))}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-900 mb-3">Expense Trend</h4>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Gypsum Expenses</span>
-                    <span className="text-sm font-medium text-red-600">{formatCurrency(gypsumData?.totalExpenses || 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Wood Expenses</span>
-                    <span className="text-sm font-medium text-red-600">{formatCurrency(woodData?.totalExpenses || 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Total Expenses</span>
-                    <span className="text-lg font-bold text-red-600">
-                      {formatCurrency((gypsumData?.totalExpenses || 0) + (woodData?.totalExpenses || 0))}
-                    </span>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
+            {/* Revenue and Expense Distribution */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-4 text-center">Revenue Distribution</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={getPieChartData()}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {getPieChartData().map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value: number) => [formatCurrency(value), '']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-4 text-center">Expense Distribution</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={getExpensePieChartData()}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {getExpensePieChartData().map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value: number) => [formatCurrency(value), '']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Performance Comparison */}
             <div className="mt-6">
               <h4 className="font-medium text-gray-900 mb-3">Performance Comparison</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

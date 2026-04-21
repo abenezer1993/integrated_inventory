@@ -16,12 +16,26 @@ interface Branch {
   updated_at: string;
 }
 
+interface BranchAnalytics {
+  branchId: string;
+  branchName: string;
+  totalInventory: number;
+  totalProducts: number;
+  totalSales: number;
+  todaySales: number;
+  lowStockItems: number;
+  recentSales: number;
+  topProducts: any[];
+}
+
 const Branches: React.FC = () => {
   const { supabase } = useSupabase();
   const { user } = useAuth();
   const { showConfirmation } = useConfirmation();
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchAnalytics, setBranchAnalytics] = useState<BranchAnalytics[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [formData, setFormData] = useState({
@@ -32,10 +46,6 @@ const Branches: React.FC = () => {
     email: '',
     is_active: true
   });
-
-  useEffect(() => {
-    fetchBranches();
-  }, []);
 
   const fetchBranches = async () => {
     try {
@@ -58,6 +68,104 @@ const Branches: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const fetchBranchAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true);
+      console.log('Fetching branch analytics...');
+      
+      // Get all branches first
+      const { data: branchesData, error: branchError } = await supabase!
+        .from('branches')
+        .select('id, name')
+        .eq('is_active', true);
+      
+      if (branchError) throw branchError;
+      
+      if (!branchesData || branchesData.length === 0) {
+        setBranchAnalytics([]);
+        return;
+      }
+      
+      const analytics: BranchAnalytics[] = [];
+      
+      // Get analytics for each branch
+      for (const branch of branchesData) {
+        try {
+          // Get inventory data for this branch
+          const { data: inventoryData } = await supabase!
+            .from('inventory')
+            .select('quantity, product_id')
+            .eq('branch_id', branch.id);
+          
+          // Get sales data for this branch
+          const { data: salesData } = await supabase!
+            .from('sales')
+            .select('total_amount, created_at')
+            .eq('branch_id', branch.id);
+          
+          // Get today's sales
+          const today = new Date().toISOString().split('T')[0];
+          const todaySalesData = salesData?.filter(sale => 
+            sale.created_at?.startsWith(today)
+          ) || [];
+          
+          // Calculate analytics
+          const totalInventory = inventoryData?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+          const totalProducts = inventoryData?.length || 0;
+          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
+          const todaySales = todaySalesData.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
+          const recentSales = salesData?.filter(sale => {
+            const saleDate = new Date(sale.created_at);
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return saleDate >= weekAgo;
+          }).length || 0;
+          
+          // Get low stock items (products with quantity < 10)
+          const lowStockItems = inventoryData?.filter(item => (item.quantity || 0) < 10).length || 0;
+          
+          analytics.push({
+            branchId: branch.id,
+            branchName: branch.name,
+            totalInventory,
+            totalProducts,
+            totalSales,
+            todaySales,
+            lowStockItems,
+            recentSales,
+            topProducts: [] // We can expand this later
+          });
+        } catch (error) {
+          console.error(`Error fetching analytics for branch ${branch.name}:`, error);
+          // Add default analytics for this branch
+          analytics.push({
+            branchId: branch.id,
+            branchName: branch.name,
+            totalInventory: 0,
+            totalProducts: 0,
+            totalSales: 0,
+            todaySales: 0,
+            lowStockItems: 0,
+            recentSales: 0,
+            topProducts: []
+          });
+        }
+      }
+      
+      setBranchAnalytics(analytics);
+      console.log('Branch analytics fetched:', analytics);
+    } catch (error) {
+      console.error('Error fetching branch analytics:', error);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBranches();
+    fetchBranchAnalytics();
+  }, []);
 
   const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +263,7 @@ const Branches: React.FC = () => {
 
       alertFunction('Branch deleted successfully!');
       fetchBranches();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting branch:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       alertFunction(`Error deleting branch: ${errorMessage}`);
@@ -255,6 +363,114 @@ const Branches: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Branch Analytics */}
+      {analyticsLoading ? (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Branch Analytics</h3>
+          </div>
+          <div className="p-8">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600">Loading branch analytics...</span>
+            </div>
+          </div>
+        </div>
+      ) : branchAnalytics.length > 0 ? (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Branch Analytics</h3>
+            <p className="text-sm text-gray-600 mt-1">Performance metrics and inventory insights for each branch</p>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {branchAnalytics.map((analytics) => (
+                <div key={analytics.branchId} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-semibold text-gray-900">{analytics.branchName}</h4>
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-sm">📊</span>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-500">Total Inventory</p>
+                        <p className="text-lg font-bold text-gray-900">{analytics.totalInventory.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Products</p>
+                        <p className="text-lg font-bold text-blue-600">{analytics.totalProducts}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Total Sales</p>
+                        <p className="text-lg font-bold text-green-600">${analytics.totalSales.toFixed(2)}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-500">Today's Sales</p>
+                        <p className="text-lg font-bold text-purple-600">${analytics.todaySales.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Low Stock Items</p>
+                        <p className="text-lg font-bold text-orange-600">{analytics.lowStockItems}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Recent Sales (7d)</p>
+                        <p className="text-lg font-bold text-cyan-600">{analytics.recentSales}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Performance Indicator */}
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Performance</span>
+                      <div className="flex items-center">
+                        {analytics.todaySales > 0 ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            🟢 Active Today
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            ⚪ No Sales Today
+                          </span>
+                        )}
+                        {analytics.lowStockItems > 0 && (
+                          <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                            ⚠️ Low Stock
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Branch Analytics</h3>
+          </div>
+          <div className="p-8 text-center">
+            <div className="text-gray-500">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No analytics data available</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Branch analytics will appear here once branches have inventory and sales data.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Branches Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">

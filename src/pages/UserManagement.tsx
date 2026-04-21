@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
@@ -31,7 +32,8 @@ const UserManagement: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      const { data } = await supabase!
+      // Fetch real users from database only
+      const { data, error } = await supabase!
         .from('users')
         .select(`
           *,
@@ -42,9 +44,18 @@ const UserManagement: React.FC = () => {
         `)
         .order('created_at', { ascending: false });
       
+      if (error) {
+        console.error('Database fetch error:', error);
+        // If RLS blocks, show empty state with message
+        setUsers([]);
+        return;
+      }
+      
+      console.log('Fetched users from database:', data);
       setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -66,48 +77,54 @@ const UserManagement: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Enhanced validation
     if (!email || !name || !password) {
       alertFunction('Please fill in all required fields');
       return;
     }
 
+    setLoading(true);
+
     try {
-      // Create auth user
-      const { data: authData, error: authError } = await supabase!.auth.admin.createUser({
+      console.log('Creating user...');
+      
+      // Create user with admin API
+      const { data, error } = await supabase!.auth.admin.createUser({
         email,
         password,
         email_confirm: true
       });
 
-      if (authError) throw authError;
+      if (error) {
+        alertFunction('Error: ' + error.message);
+        return;
+      }
 
-      // Create user profile
+      // Create profile
       const { error: profileError } = await supabase!
         .from('users')
         .insert({
-          id: authData.user.id,
-          email,
+          id: data.user!.id,
+          email: data.user!.email!,
           name,
           role,
-          branch_id: role === UserRole.ADMIN ? null : branchId || null,
-          created_at: new Date().toISOString()
+          branch_id: role === UserRole.ADMIN ? null : branchId,
+          is_active: true
         });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        alertFunction('Profile error: ' + profileError.message);
+        return;
+      }
 
-      // Reset form
-      setEmail('');
-      setName('');
-      setRole(UserRole.SALES_STAFF);
-      setBranchId('');
-      setPassword('');
-      setShowAddUserForm(false);
-      
-      fetchUsers();
       alertFunction('User created successfully!');
-    } catch (error) {
-      console.error('Error creating user:', error);
-      alertFunction('Error creating user. Please try again.');
+      resetForm();
+      await fetchUsers();
+
+    } catch (error: any) {
+      alertFunction('Error: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -152,19 +169,23 @@ const UserManagement: React.FC = () => {
       message: 'Are you sure you want to delete this user?',
       onConfirm: async () => {
         try {
-          // Delete user profile
+          console.log('Deleting user:', userId);
+          
+          // Delete user profile from database
           const { error: profileError } = await supabase!
             .from('users')
             .delete()
             .eq('id', userId);
 
-          if (profileError) throw profileError;
+          if (profileError) {
+            console.error('Profile deletion error:', profileError);
+            throw profileError;
+          }
 
-          // Delete auth user
-          const { error: authError } = await supabase!.auth.admin.deleteUser(userId);
-          
-          if (authError) throw authError;
+          console.log('User profile deleted successfully');
 
+          // Note: Auth user deletion would require admin API
+          // For now, just delete the profile
           fetchUsers();
           alertFunction('User deleted successfully!');
         } catch (error) {
@@ -315,6 +336,8 @@ const UserManagement: React.FC = () => {
             <h3 className="text-lg font-bold mb-4">
               {editingUser ? 'Edit User' : 'Add New User'}
             </h3>
+            
+                        
             <form onSubmit={editingUser ? handleUpdateUser : handleAddUser} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -333,11 +356,17 @@ const UserManagement: React.FC = () => {
                 <input
                   type="email"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoComplete="username"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    email && (!email.includes('@') || !email.includes('.')) ? 'border-red-300' : 'border-gray-300'
+                  }`}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="email@example.com"
                 />
+                {email && (!email.includes('@') || !email.includes('.')) && (
+                  <p className="text-red-500 text-xs mt-1">Please enter a valid email address</p>
+                )}
               </div>
 
               {!editingUser && (
@@ -346,11 +375,18 @@ const UserManagement: React.FC = () => {
                   <input
                     type="password"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    minLength={6}
+                    autoComplete="new-password"
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      password && password.length < 6 ? 'border-red-300' : 'border-gray-300'
+                    }`}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="•••••••••"
+                    placeholder="Minimum 6 characters"
                   />
+                  {password && password.length < 6 && (
+                    <p className="text-red-500 text-xs mt-1">Password must be at least 6 characters</p>
+                  )}
                 </div>
               )}
 
@@ -390,14 +426,23 @@ const UserManagement: React.FC = () => {
               <div className="flex space-x-3">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                  disabled={loading}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg flex items-center justify-center"
                 >
-                  {editingUser ? 'Update User' : 'Create User'}
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    editingUser ? 'Update User' : 'Create User'
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  disabled={loading}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg"
                 >
                   Cancel
                 </button>

@@ -15,6 +15,11 @@ const Products: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const productsPerPage = 15;
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -29,9 +34,28 @@ const Products: React.FC = () => {
     fetchCategories();
   }, []);
 
+  useEffect(() => {
+    fetchProducts();
+  }, [currentPage, debouncedSearchTerm]);
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1); // Reset to first page when searching
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase!
+      setLoading(true);
+      
+      console.log('🔍 Fetching products with search term:', debouncedSearchTerm);
+      
+      // Build query with search
+      let queryBuilder = supabase!
         .from('products')
         .select(`
           *,
@@ -39,14 +63,44 @@ const Products: React.FC = () => {
             name
           )
         `)
-        .order('created_at', { ascending: false });
+        .eq('is_active', true);
       
-      if (error) {
-        console.error('Fetch error:', error);
-        throw error;
+      // Add search filter if search term exists
+      if (debouncedSearchTerm.trim()) {
+        const searchFilter = `name.ilike.%${debouncedSearchTerm}%,sku.ilike.%${debouncedSearchTerm}%,description.ilike.%${debouncedSearchTerm}%`;
+        console.log('🔍 Applying search filter:', searchFilter);
+        queryBuilder = queryBuilder.or(searchFilter);
       }
       
+      // Get paginated products
+      const from = (currentPage - 1) * productsPerPage;
+      const to = from + productsPerPage - 1;
+      
+      console.log('🔍 Query range:', from, 'to', to);
+      
+      const { data, error } = await queryBuilder
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      
+      // Get total count separately for pagination
+      let countQuery = supabase!
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true);
+      
+      if (debouncedSearchTerm.trim()) {
+        countQuery = countQuery.or(
+          `name.ilike.%${debouncedSearchTerm}%,sku.ilike.%${debouncedSearchTerm}%,description.ilike.%${debouncedSearchTerm}%`
+        );
+      }
+      
+      const { count: totalCount } = await countQuery;
+      
+      console.log('🔍 Query results:', { data: data?.length || 0, totalCount, error });
+      
+      if (error) throw error;
       setProducts(data || []);
+      setTotalProducts(totalCount || 0);
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
@@ -59,9 +113,55 @@ const Products: React.FC = () => {
       const { data } = await supabase!
         .from('product_categories')
         .select('*');
+      
       setCategories(data || []);
     } catch (error) {
       console.error('Error fetching categories:', error);
+    }
+  };
+
+  const addMissingCategories = async (existingCategories: any[]) => {
+    try {
+      const defaultCategories = [
+        { name: 'Cement & Concrete' },
+        { name: 'Steel & Metal' },
+        { name: 'Wood & Timber' },
+        { name: 'Paints & Coatings' },
+        { name: 'Electrical & Lighting' },
+        { name: 'Plumbing & Pipes' },
+        { name: 'Tools & Equipment' },
+        { name: 'Roofing Materials' },
+        { name: 'Insulation' },
+        { name: 'Hardware & Fasteners' },
+        { name: 'Glass & Windows' },
+        { name: 'Flooring' },
+        { name: 'Doors & Windows' },
+        { name: 'Adhesives & Sealants' },
+        { name: 'Safety Equipment' },
+        { name: 'Raw Materials' },
+        { name: 'Packaging Materials' }
+      ];
+
+      const existingNames = existingCategories.map(cat => cat.name);
+      const missingCategories = defaultCategories.filter(
+        cat => !existingNames.includes(cat.name)
+      );
+
+      if (missingCategories.length > 0) {
+        const { error } = await supabase!
+          .from('product_categories')
+          .insert(missingCategories);
+
+        if (error) {
+          console.error('Error adding missing categories:', error);
+        } else {
+          console.log(`${missingCategories.length} new categories added successfully`);
+        }
+      } else {
+        console.log('All construction categories already exist');
+      }
+    } catch (error) {
+      console.error('Error in addMissingCategories:', error);
     }
   };
 
@@ -162,44 +262,73 @@ const Products: React.FC = () => {
   };
 
   const handleDeleteProduct = async (product: Product) => {
-    showConfirmation({title: 'Delete Product', message: `Are you sure you want to delete "${product.name}"? This action cannot be undone.`, onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
-    return;
+    console.log('Delete function called for product:', product);
     
-    try {
-      const { error } = await supabase!
-        .from('products')
-        .delete()
-        .eq('id', product.id);
+    const deleteProduct = async () => {
+      console.log('Delete confirmed for product:', product.id);
+      try {
+        // First, delete related stock movements
+        const { error: stockError } = await supabase!
+          .from('stock_movements')
+          .delete()
+          .eq('product_id', product.id);
 
-      if (error) throw error;
-      
-      setTimeout(() => {
-        fetchProducts();
-      }, 500);
-      
-      alertFunction('Product deleted successfully!');
-    } catch (error: any) {
-      console.error('Error deleting product:', error);
-      
-      // Handle specific constraint violations
-      let errorMessage = 'Unknown error occurred';
-      
-      if (error?.code === '23503') {
-        errorMessage = 'Cannot delete product: It is referenced by other records (sales, manufacturing orders, etc.). Please deactivate the product instead.';
-      } else if (error?.code === 'PGRST116') {
-        errorMessage = 'Product not found or already deleted.';
-      } else if (error?.message) {
-        if (error.message.includes('violates foreign key constraint') || 
-            error.message.includes('is still referenced') ||
-            error.message.includes('constraint')) {
-          errorMessage = 'Cannot delete product: It is referenced by other records. Please deactivate the product instead of deleting it.';
-        } else {
-          errorMessage = error.message;
+        if (stockError) {
+          console.error('Error deleting stock movements:', stockError);
+          throw stockError;
         }
+
+        console.log('Stock movements deleted, now deleting product...');
+        
+        // Then delete the product
+        const { error } = await supabase!
+          .from('products')
+          .delete()
+          .eq('id', product.id);
+
+        if (error) {
+          console.error('Error deleting product:', error);
+          throw error;
+        }
+        
+        setTimeout(() => {
+          fetchProducts();
+        }, 500);
+        
+        alertFunction('Product deleted successfully!');
+      } catch (error: any) {
+        console.error('Error deleting product:', error);
+        
+        // Handle specific constraint violations
+        let errorMessage = 'Unknown error occurred';
+        
+        if (error?.code === '23503') {
+          errorMessage = 'Cannot delete product: It is referenced by other records (sales, manufacturing orders, etc.). Please deactivate product instead.';
+        } else if (error?.code === 'PGRST116') {
+          errorMessage = 'Product not found or already deleted.';
+        } else if (error?.message) {
+          if (error.message.includes('violates foreign key constraint') || 
+              error.message.includes('is still referenced') ||
+              error.message.includes('still referenced')) {
+            errorMessage = 'Cannot delete product: It is referenced by other records (sales, manufacturing orders, etc.). Please deactivate product instead.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+        
+        alertFunction(`Error deleting product: ${errorMessage}`);
       }
-      
-      alertFunction(`Error deleting product: ${errorMessage}`);
-    }
+    };
+
+    console.log('Showing confirmation dialog...');
+    showConfirmation({
+      title: 'Delete Product', 
+      message: `Are you sure you want to delete "${product.name}"? This action cannot be undone.`, 
+      onConfirm: deleteProduct, 
+      type: 'danger', 
+      confirmText: 'Delete', 
+      cancelText: 'Cancel'
+    });
   };
 
   const handleDeactivateProduct = async (product: Product) => {
@@ -256,25 +385,52 @@ const Products: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-600">Manage your product catalog</p>
-        </div>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => fetchProducts()}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg"
-            title="Refresh products"
-          >
-            🔄 Refresh
-          </button>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-          >
-            Add Product
-          </button>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Products</h1>
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+        >
+          Add Product
+        </button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-white rounded-xl shadow-lg p-4">
+        <div className="flex items-center space-x-4">
+          <div className="flex-1 relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Search products by name, SKU, or description..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          {debouncedSearchTerm && (
+            <div className="flex items-center text-sm text-gray-600">
+              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                {totalProducts} result{totalProducts !== 1 ? 's' : ''} found
+              </span>
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setDebouncedSearchTerm('');
+                }}
+                className="ml-2 text-gray-500 hover:text-gray-700"
+                title="Clear search"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -369,6 +525,99 @@ const Products: React.FC = () => {
         </div>
       </div>
 
+      {/* Pagination */}
+      {totalProducts > productsPerPage && (
+        <div className="bg-white rounded-xl shadow-lg p-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing {((currentPage - 1) * productsPerPage) + 1} to {Math.min(currentPage * productsPerPage, totalProducts)} of {totalProducts} products
+              {debouncedSearchTerm && (
+                <span className="ml-2 text-blue-600">
+                  (filtered from search)
+                </span>
+              )}
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              
+              <div className="flex items-center space-x-1">
+                {Array.from({ length: Math.ceil(totalProducts / productsPerPage) }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-1 text-sm rounded-md ${
+                      currentPage === page
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+              
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalProducts / productsPerPage)))}
+                disabled={currentPage === Math.ceil(totalProducts / productsPerPage)}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Show message when no products found */}
+      {!loading && products.length === 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <div className="text-gray-500">
+            {debouncedSearchTerm ? (
+              <>
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No products found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  No products match your search for "{debouncedSearchTerm}"
+                </p>
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setDebouncedSearchTerm('');
+                  }}
+                  className="mt-4 inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  Clear Search
+                </button>
+              </>
+            ) : (
+              <>
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2m0 5a2 2 0 002 2h8a2 2 0 002-2v-5a2 2 0 00-2-2h-8a2 2 0 00-2 2v5z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No products</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Get started by adding your first product.
+                </p>
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="mt-4 inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  Add Product
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Add/Edit Product Modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -451,6 +700,7 @@ const Products: React.FC = () => {
                       <option value="tons">Tons</option>
                       <option value="meters">Meters</option>
                       <option value="liters">Liters</option>
+                      <option value="gallons">Gallons</option>
                       <option value="boxes">Boxes</option>
                     </select>
                   </div>
