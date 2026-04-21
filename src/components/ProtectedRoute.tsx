@@ -15,6 +15,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 }) => {
   const { user, loading, hasPermission, isAdmin, isBranchManager, isSalesStaff, isWarehouseStaff } = useAuth();
 
+  // Debug logging
+  console.log('ProtectedRoute - User:', user);
+  console.log('ProtectedRoute - User role:', user?.role);
+  console.log('ProtectedRoute - Required role:', requiredRole);
+  console.log('ProtectedRoute - Required permission:', requiredPermission);
+  console.log('ProtectedRoute - Is admin:', isAdmin());
+  console.log('ProtectedRoute - Is branch manager:', isBranchManager());
+  console.log('ProtectedRoute - Is sales staff:', isSalesStaff());
+  console.log('ProtectedRoute - Has permission:', requiredPermission ? hasPermission(requiredPermission) : 'N/A');
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -24,32 +34,56 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!user) {
+    console.log('ProtectedRoute - No user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
   // Check role-based access
   if (requiredRole) {
+    console.log('ProtectedRoute - Checking required role:', requiredRole);
     switch (requiredRole) {
       case 'admin':
-        if (!isAdmin()) return <Navigate to="/dashboard" replace />;
+        console.log('ProtectedRoute - Admin check, isAdmin():', isAdmin());
+        if (!isAdmin()) {
+          console.log('ProtectedRoute - Admin check failed, redirecting');
+          return <Navigate to="/dashboard" replace />;
+        }
         break;
       case 'branch_manager':
-        if (!isBranchManager()) return <Navigate to="/dashboard" replace />;
+        console.log('ProtectedRoute - Branch manager check, isBranchManager():', isBranchManager());
+        if (!isBranchManager()) {
+          console.log('ProtectedRoute - Branch manager check failed, redirecting');
+          return <Navigate to="/dashboard" replace />;
+        }
         break;
       case 'sales_staff':
-        if (!isSalesStaff()) return <Navigate to="/dashboard" replace />;
+        console.log('ProtectedRoute - Sales staff check, isSalesStaff():', isSalesStaff());
+        if (!isSalesStaff()) {
+          console.log('ProtectedRoute - Sales staff check failed, redirecting');
+          return <Navigate to="/dashboard" replace />;
+        }
         break;
       case 'warehouse_staff':
-        if (!isWarehouseStaff()) return <Navigate to="/dashboard" replace />;
+        console.log('ProtectedRoute - Warehouse staff check, isWarehouseStaff():', isWarehouseStaff());
+        if (!isWarehouseStaff()) {
+          console.log('ProtectedRoute - Warehouse staff check failed, redirecting');
+          return <Navigate to="/dashboard" replace />;
+        }
         break;
     }
   }
 
   // Check permission-based access
-  if (requiredPermission && !hasPermission(requiredPermission)) {
-    return <Navigate to="/dashboard" replace />;
+  if (requiredPermission) {
+    const hasRequiredPermission = hasPermission(requiredPermission);
+    console.log('ProtectedRoute - Permission check result:', hasRequiredPermission);
+    if (!hasRequiredPermission) {
+      console.log('ProtectedRoute - Permission check failed, redirecting');
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
+  console.log('ProtectedRoute - All checks passed, rendering children');
   return <>{children}</>;
 };
 

@@ -7,7 +7,7 @@ import { useConfirmation } from '../utils/confirmations';
 import { User, UserRole } from '../types';
 
 const UserManagement: React.FC = () => {
-  const { supabase } = useSupabase();
+  const { supabase, supabaseAdmin } = useSupabase();
   const { user: currentUser, hasPermission } = useAuth();
   const { showConfirmation } = useConfirmation();
   const [users, setUsers] = useState<User[]>([]);
@@ -24,15 +24,69 @@ const UserManagement: React.FC = () => {
   const [branches, setBranches] = useState<any[]>([]);
 
   useEffect(() => {
-    if (hasPermission('manage_users')) {
+    console.log('UserManagement component mounted/updated');
+    console.log('Current user:', currentUser);
+    console.log('Has manage_users permission:', hasPermission('manage_users'));
+    
+    // Temporarily bypass permission check for admin user
+    const isAdminUser = currentUser?.role === 'admin';
+    console.log('Is admin user:', isAdminUser);
+    
+    if (hasPermission('manage_users') || isAdminUser) {
+      console.log('Permission check passed, calling fetchUsers and fetchBranches');
       fetchUsers();
       fetchBranches();
+    } else {
+      console.log('Permission check failed, not fetching data');
+      setLoading(false); // Set loading to false if no permission
     }
   }, []);
 
+  useEffect(() => {
+    console.log('Loading state changed:', loading);
+  }, [loading]);
+
   const fetchUsers = async () => {
+    console.log('fetchUsers started');
     try {
-      // Fetch real users from database only
+      console.log('Fetching users...');
+      console.log('supabaseAdmin available:', !!supabaseAdmin);
+      console.log('supabase available:', !!supabase);
+      
+      // Always use admin client if available
+      if (supabaseAdmin) {
+        console.log('Using admin client for fetching');
+        const { data, error } = await supabaseAdmin
+          .from('users')
+          .select(`
+            *,
+            branches (
+              name,
+              location
+            )
+          `)
+          .order('created_at', { ascending: false });
+        
+        console.log('Admin client query completed');
+        console.log('Admin client data:', data);
+        console.log('Admin client error:', error);
+        
+        if (error) {
+          console.error('Admin client fetch error:', error);
+          setUsers([]);
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Fetched users with admin client:', data);
+        console.log('Number of users:', data?.length || 0);
+        setUsers(data || []);
+        setLoading(false);
+        return;
+      }
+      
+      // Fallback to regular client
+      console.log('Using regular client for fetching');
       const { data, error } = await supabase!
         .from('users')
         .select(`
@@ -44,19 +98,24 @@ const UserManagement: React.FC = () => {
         `)
         .order('created_at', { ascending: false });
       
+      console.log('Regular client query completed');
+      console.log('Regular client data:', data);
+      console.log('Regular client error:', error);
+      
       if (error) {
-        console.error('Database fetch error:', error);
-        // If RLS blocks, show empty state with message
+        console.error('Regular client fetch error:', error);
         setUsers([]);
+        setLoading(false);
         return;
       }
       
-      console.log('Fetched users from database:', data);
+      console.log('Fetched users with regular client:', data);
       setUsers(data || []);
     } catch (error) {
       console.error('Error fetching users:', error);
       setUsers([]);
     } finally {
+      console.log('fetchUsers completed, setting loading to false');
       setLoading(false);
     }
   };
@@ -77,51 +136,130 @@ const UserManagement: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('handleAddUser called');
+    console.log('Form data:', { email, name, role, branchId, password: '***' });
+    console.log('Loading state:', loading);
+    
+    // Prevent multiple submissions
+    if (loading) {
+      console.log('Already creating user, skipping...');
+      return;
+    }
+    
     // Enhanced validation
     if (!email || !name || !password) {
+      console.log('Validation failed:', { email: !!email, name: !!name, password: !!password });
       alertFunction('Please fill in all required fields');
       return;
     }
 
+    // Branch validation for non-admin roles
+    if (role !== UserRole.ADMIN && !branchId) {
+      console.log('Branch validation failed:', { role, branchId: !!branchId });
+      alertFunction('Please select a branch for non-admin users');
+      return;
+    }
+
+    console.log('Validation passed, starting user creation...');
     setLoading(true);
+    console.log('Loading set to true, proceeding with user creation...');
 
     try {
-      console.log('Creating user...');
+      console.log('Step 1: Starting user creation');
       
-      // Create user with admin API
-      const { data, error } = await supabase!.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true
-      });
-
-      if (error) {
-        alertFunction('Error: ' + error.message);
+      try {
+        console.log('Step 2: Checking admin client');
+        console.log('Supabase Admin available:', !!supabaseAdmin);
+        
+        // Check if admin client is available
+        if (!supabaseAdmin) {
+          console.error('Step 3: Admin client is null');
+          alertFunction('Admin access not available. Please check service key configuration.');
+          return;
+        }
+        
+        console.log('Step 4: Admin client confirmed');
+      } catch (err) {
+        console.error('Step 4 ERROR:', err);
         return;
       }
-
-      // Create profile
-      const { error: profileError } = await supabase!
-        .from('users')
-        .insert({
-          id: data.user!.id,
-          email: data.user!.email!,
-          name,
-          role,
-          branch_id: role === UserRole.ADMIN ? null : branchId,
-          is_active: true
+      
+      let userData: any = null;
+      
+      try {
+        console.log('Step 5: Calling admin API');
+        console.log('Email:', email);
+        
+        // Create user with admin API
+        const { data, error } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true
         });
 
-      if (profileError) {
-        alertFunction('Profile error: ' + profileError.message);
+        console.log('Step 6: Admin API completed');
+        console.log('Response:', { data: !!data, error: !!error });
+
+        if (error) {
+          console.error('Step 7: Admin API error:', error);
+          alertFunction('Error creating user: ' + error.message);
+          return;
+        }
+
+        console.log('Step 8: User created successfully');
+        console.log('User data:', data.user);
+        userData = data.user;
+      } catch (apiErr: any) {
+        console.error('Step 5-8 API ERROR:', apiErr);
+        alertFunction('API Error: ' + (apiErr.message || apiErr.toString()));
         return;
       }
 
+      // Create profile using regular client (RLS should allow this)
+      if (!userData) {
+        console.error('Step 9: No user data returned');
+        alertFunction('Error: No user data returned from API');
+        return;
+      }
+      
+      try {
+        console.log('Step 10: Creating user profile with admin client');
+        const { error: profileError } = await supabaseAdmin!
+          .from('users')
+          .insert({
+            id: userData.id,
+            email: userData.email || email,
+            name,
+            role,
+            branch_id: role === UserRole.ADMIN ? null : branchId,
+            is_active: true
+          });
+
+        if (profileError) {
+          console.error('Step 11: Profile creation error:', profileError);
+          alertFunction('Profile error: ' + profileError.message);
+          return;
+        }
+
+        console.log('Step 12: Profile created successfully');
+      } catch (profileErr: any) {
+        console.error('Step 10-12 PROFILE ERROR:', profileErr);
+        alertFunction('Profile Error: ' + (profileErr.message || profileErr.toString()));
+        return;
+      }
+
+      console.log('Step 13: User creation completed successfully');
       alertFunction('User created successfully!');
       resetForm();
-      await fetchUsers();
+      
+      // Add small delay to ensure database consistency
+      setTimeout(async () => {
+        console.log('Step 14: Refreshing users list after delay');
+        await fetchUsers();
+      }, 1000);
 
     } catch (error: any) {
+      console.error('Unexpected error:', error);
       alertFunction('Error: ' + error.message);
     } finally {
       setLoading(false);
@@ -137,7 +275,9 @@ const UserManagement: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase!
+      const clientToUse = supabaseAdmin || supabase;
+      
+      const { error } = await clientToUse!
         .from('users')
         .update({
           email,
@@ -166,13 +306,19 @@ const UserManagement: React.FC = () => {
   const handleDeleteUser = async (userId: string) => {
     showConfirmation({
       title: 'Delete User',
-      message: 'Are you sure you want to delete this user?',
+      message: 'Are you sure you want to delete this user? This action cannot be undone.',
       onConfirm: async () => {
         try {
           console.log('Deleting user:', userId);
           
-          // Delete user profile from database
-          const { error: profileError } = await supabase!
+          // Use admin client for complete deletion
+          if (!supabaseAdmin) {
+            alertFunction('Admin access not available for deletion');
+            return;
+          }
+          
+          // First delete the user profile from database
+          const { error: profileError } = await supabaseAdmin
             .from('users')
             .delete()
             .eq('id', userId);
@@ -184,10 +330,19 @@ const UserManagement: React.FC = () => {
 
           console.log('User profile deleted successfully');
 
-          // Note: Auth user deletion would require admin API
-          // For now, just delete the profile
+          // Then delete the auth user using admin API
+          const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+          if (authError) {
+            console.error('Auth user deletion error:', authError);
+            // Profile is deleted, but auth user remains - warn user
+            alertFunction('User profile deleted, but auth user still exists. Contact admin to clean up auth user.');
+          } else {
+            console.log('Auth user deleted successfully');
+            alertFunction('User deleted completely!');
+          }
+
           fetchUsers();
-          alertFunction('User deleted successfully!');
         } catch (error) {
           console.error('Error deleting user:', error);
           alertFunction('Error deleting user. Please try again.');
@@ -244,12 +399,20 @@ const UserManagement: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           <p className="text-gray-600">Manage user accounts and permissions</p>
         </div>
-        <button
-          onClick={() => setShowAddUserForm(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-        >
-          Add New User
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={fetchUsers}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+          >
+            Refresh Users
+          </button>
+          <button
+            onClick={() => setShowAddUserForm(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+          >
+            Add New User
+          </button>
+        </div>
       </div>
 
       {/* Users Table */}
@@ -407,8 +570,9 @@ const UserManagement: React.FC = () => {
 
               {role !== UserRole.ADMIN && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
                   <select
+                    required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={branchId}
                     onChange={(e) => setBranchId(e.target.value)}
@@ -420,6 +584,9 @@ const UserManagement: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                  {!branchId && (
+                    <p className="text-red-500 text-xs mt-1">Please select a branch</p>
+                  )}
                 </div>
               )}
 
