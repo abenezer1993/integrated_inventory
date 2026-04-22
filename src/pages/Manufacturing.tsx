@@ -27,6 +27,8 @@ const Manufacturing: React.FC = () => {
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [materialsUsed, setMaterialsUsed] = useState<{ [key: string]: number }>({});
+  const [measurementType, setMeasurementType] = useState<string>('piece');
+  const [unitPrice, setUnitPrice] = useState<string>('');
   
   // Modal states
   const [viewOrderModal, setViewOrderModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
@@ -75,17 +77,64 @@ const Manufacturing: React.FC = () => {
     return manufacturedInventory.filter(item => item.category === category).length;
   };
 
+  // Payment calculation functions
+  const calculateEmployeePayments = (employeeId: string) => {
+    const employeeOrders = manufacturingOrders.filter(order => order.employee_id === employeeId);
+
+    // Calculate total payments from manufacturing records
+    const totalPayments = employeeOrders.reduce((sum, order) => {
+      // Extract payment info from order notes or calculate from quantity and unit price
+      const quantity = order.quantity_produced || 0;
+      // For now, assume unit price is stored in notes or calculate default
+      const unitPrice = 500; // Default fallback - should be stored with order
+      return sum + (quantity * unitPrice);
+    }, 0);
+
+    // Group by measurement type
+    const paymentsByType = {
+      piece: 0,
+      m2: 0,
+      day: 0
+    };
+
+    employeeOrders.forEach(order => {
+      const quantity = order.quantity_produced || 0;
+      const unitPrice = 500; // Default fallback
+      const measurementType = 'piece'; // Default - should be stored with order
+      paymentsByType[measurementType as keyof typeof paymentsByType] += quantity * unitPrice;
+    });
+
+    // Recent payments (last 10)
+    const recentPayments = employeeOrders
+      .slice(0, 10)
+      .map(order => ({
+        date: new Date(order.created_at).toLocaleDateString(),
+        product: order.product_name || 'Unknown',
+        quantity: order.quantity_produced || 0,
+        measurement: 'piece', // Should be stored with order
+        unitPrice: 500, // Should be stored with order
+        totalPayment: (order.quantity_produced || 0) * 500
+      }));
+
+    return {
+      totalPayments,
+      paymentsByType,
+      recentPayments,
+      totalOrders: employeeOrders.length
+    };
+  };
+
   // Salary calculation functions
   const calculateWeeklySalary = (employeeId: string) => {
     const employeeOrders = manufacturingOrders.filter(order => order.employee_id === employeeId);
     const totalProducts = employeeOrders.reduce((sum, order) => sum + order.quantity_produced, 0);
     const daysWorked = 7; // Weekly period
     const dailyAverage = totalProducts / daysWorked;
-    
+
     // Base salary calculation (customize rates as needed)
     const gypsumRate = 50; // ETB per gypsum product
     const woodRate = 75; // ETB per wood product
-    
+
     const totalEarnings = employeeOrders.reduce((sum, order) => {
       if (order.product_category === 'gypsum') {
         return sum + (order.quantity_produced * gypsumRate);
@@ -331,6 +380,9 @@ const Manufacturing: React.FC = () => {
       setSelectedCategory('');
       setProductName('');
       setSelectedBranch('');
+      setSelectedEmployee('');
+      setMeasurementType('piece');
+      setUnitPrice('');
       setShowAddForm(false);
       fetchManufacturingOrders();
       
@@ -939,39 +991,61 @@ const Manufacturing: React.FC = () => {
       {activeTab === 'employee_performance' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Employee Performance Overview */}
+            {/* Employee Payment Summary */}
             <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Employee Performance Overview</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Employee Payment Summary</h3>
               <div className="space-y-4">
                 {employees.map((employee) => {
-                  const salary = calculateWeeklySalary(employee.id);
+                  const payments = calculateEmployeePayments(employee.id);
                   return (
                     <div key={employee.id} className="border rounded-lg p-4 hover:bg-gray-50">
-                      <div className="flex justify-between items-start mb-2">
+                      <div className="flex justify-between items-start mb-3">
                         <div>
                           <h4 className="font-medium text-gray-900">{employee.full_name}</h4>
                           <p className="text-sm text-gray-500">{employee.position}</p>
                         </div>
-                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                          {employee.department}
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                          {payments.totalOrders} Orders
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <p className="text-gray-600">Products This Week</p>
-                          <p className="font-bold text-lg">{salary.totalProducts}</p>
+                      
+                      {/* Total Earnings */}
+                      <div className="bg-green-50 p-3 rounded-lg mb-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-700">Total Earnings:</span>
+                          <span className="text-lg font-bold text-green-600">ETB {payments.totalPayments.toFixed(2)}</span>
                         </div>
-                        <div>
-                          <p className="text-gray-600">Daily Average</p>
-                          <p className="font-bold text-lg">{salary.dailyAverage.toFixed(1)}</p>
+                      </div>
+                      
+                      {/* Payment Breakdown */}
+                      <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+                        <div className="text-center p-2 bg-blue-50 rounded">
+                          <p className="text-gray-600">Piece Work</p>
+                          <p className="font-bold text-blue-600">ETB {payments.paymentsByType.piece.toFixed(0)}</p>
                         </div>
-                        <div>
-                          <p className="text-gray-600">Daily Salary</p>
-                          <p className="font-bold text-green-600">ETB {salary.dailySalary.toFixed(0)}</p>
+                        <div className="text-center p-2 bg-purple-50 rounded">
+                          <p className="text-gray-600">m² Work</p>
+                          <p className="font-bold text-purple-600">ETB {payments.paymentsByType.m2.toFixed(0)}</p>
                         </div>
-                        <div>
-                          <p className="text-gray-600">Weekly Salary</p>
-                          <p className="font-bold text-green-600">ETB {salary.weeklySalary.toFixed(0)}</p>
+                        <div className="text-center p-2 bg-orange-50 rounded">
+                          <p className="text-gray-600">Daily Work</p>
+                          <p className="font-bold text-orange-600">ETB {payments.paymentsByType.day.toFixed(0)}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Recent Payments */}
+                      <div>
+                        <p className="text-xs font-medium text-gray-700 mb-2">Recent Payments:</p>
+                        <div className="space-y-1 max-h-20 overflow-y-auto">
+                          {payments.recentPayments.slice(0, 3).map((payment, index) => (
+                            <div key={index} className="flex justify-between text-xs bg-gray-50 p-1 rounded">
+                              <span>{payment.date} - {payment.product}</span>
+                              <span className="font-medium">ETB {payment.totalPayment.toFixed(0)}</span>
+                            </div>
+                          ))}
+                          {payments.recentPayments.length === 0 && (
+                            <p className="text-xs text-gray-500 italic">No payments yet</p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1105,8 +1179,8 @@ const Manufacturing: React.FC = () => {
 
       {/* Add Production Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold mb-2">Record New Production</h3>
             <p className="text-sm text-gray-600 mb-4">Record production of company-manufactured products</p>
             <form onSubmit={handleAddProduction} className="space-y-4">
@@ -1192,6 +1266,61 @@ const Manufacturing: React.FC = () => {
                   required
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Measurement Type
+                </label>
+                <select
+                  value={measurementType || 'piece'}
+                  onChange={(e) => setMeasurementType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="piece">Piece</option>
+                  <option value="m2">Square Meter (m²)</option>
+                  <option value="day">Day</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Unit Price (ETB)
+                </label>
+                <input
+                  type="number"
+                  value={unitPrice || ''}
+                  onChange={(e) => setUnitPrice(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter price per unit"
+                  min="0"
+                  step="0.01"
+                  required
+                />
+              </div>
+
+              {/* Payment Calculation Display */}
+              {quantity && unitPrice && (
+                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                  <h4 className="text-sm font-semibold text-green-800 mb-2">Employee Payment Calculation</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-gray-600">Quantity:</span>
+                      <span className="ml-2 font-medium">{quantity} {measurementType || 'piece'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Unit Price:</span>
+                      <span className="ml-2 font-medium">ETB {parseFloat(unitPrice).toFixed(2)}</span>
+                    </div>
+                    <div className="col-span-2 border-t pt-1 mt-1">
+                      <span className="text-gray-600 font-semibold">Total Payment:</span>
+                      <span className="ml-2 font-bold text-green-600">
+                        ETB {(parseFloat(quantity) * parseFloat(unitPrice)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -44,11 +44,8 @@ const Employees: React.FC = () => {
     employee_id: '',
     full_name: '',
     phone: '',
-    position: '',
-    branch_id: '',
-    salary: '',
-    salary_type: 'per_piece' as const,
-    status: 'active' as const
+    job_type: 'gypsum' as const,
+    branch_id: ''
   });
 
   useEffect(() => {
@@ -158,7 +155,7 @@ const Employees: React.FC = () => {
     console.log('Form data:', formData);
     
     // Validation
-    if (!formData.employee_id || !formData.full_name || !formData.phone || !formData.position || !formData.salary) {
+    if (!formData.full_name || !formData.phone) {
       console.log('Validation failed - missing required fields');
       alertFunction('Please fill in all required fields');
       return;
@@ -167,15 +164,16 @@ const Employees: React.FC = () => {
     try {
       console.log('Starting employee insertion...');
       
+      // Generate auto employee ID
+      const employeeId = `EMP${new Date().getFullYear()}${String(employees.length + 1).padStart(4, '0')}`;
+      
       const employeeData = {
-        employee_id: formData.employee_id,
+        employee_id: employeeId,
         full_name: formData.full_name,
         phone: formData.phone,
-        position: formData.position,
+        position: formData.job_type === 'gypsum' ? 'Gypsum Worker' : 'Woodwork Worker',
         branch_id: formData.branch_id || null,
-        salary: parseFloat(formData.salary),
-        salary_type: formData.salary_type,
-        status: formData.status,
+        job_type: formData.job_type,
         hire_date: new Date().toISOString()
       };
       
@@ -204,11 +202,8 @@ const Employees: React.FC = () => {
         employee_id: '',
         full_name: '',
         phone: '',
-        position: '',
-        branch_id: '',
-        salary: '',
-        salary_type: 'per_piece' as const,
-        status: 'active' as const
+        job_type: 'gypsum' as const,
+        branch_id: ''
       });
       fetchEmployees();
     } catch (error: any) {
@@ -494,12 +489,6 @@ const Employees: React.FC = () => {
                       Position
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Salary Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Salary
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Branch
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -534,15 +523,6 @@ const Employees: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {employee.position}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
-                            {employee.salary_type === 'per_piece' ? 'Per Piece' : 
-                             employee.salary_type === 'per_kare' ? 'Per Kare' : 'Daily'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ETB {employee.salary?.toLocaleString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {employee.branch_name || 'Unassigned'}
@@ -684,19 +664,6 @@ const Employees: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Employee ID *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.employee_id}
-                    onChange={(e) => setFormData({...formData, employee_id: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter employee ID"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Full Name *
                   </label>
                   <input
@@ -723,31 +690,16 @@ const Employees: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Position *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.position}
-                    onChange={(e) => setFormData({...formData, position: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter job position"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Salary Type *
+                    Job Type *
                   </label>
                   <select
-                    value={formData.salary_type}
-                    onChange={(e) => setFormData({...formData, salary_type: e.target.value as any})}
+                    value={formData.job_type}
+                    onChange={(e) => setFormData({...formData, job_type: e.target.value as any})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   >
-                    <option value="">Select salary type</option>
-                    <option value="per_piece">Per Piece</option>
-                    <option value="per_kare">Per Kare (Monthly)</option>
-                    <option value="daily">Daily</option>
+                    <option value="gypsum">Gypsum</option>
+                    <option value="woodwork">Woodwork</option>
                   </select>
                 </div>
                 <div>
@@ -763,36 +715,6 @@ const Employees: React.FC = () => {
                     {branches.map((branch) => (
                       <option key={branch.id} value={branch.id}>{branch.name} - {branch.location}</option>
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Salary (ETB) *
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.salary}
-                    onChange={(e) => setFormData({...formData, salary: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter monthly salary"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status *
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="active">Active</option>
-                    <option value="on_leave">On Leave</option>
-                    <option value="inactive">Inactive</option>
                   </select>
                 </div>
               </div>
