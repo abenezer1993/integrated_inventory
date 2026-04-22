@@ -114,7 +114,7 @@ const Inventory: React.FC = () => {
       // Fetch purchased products
       const { data: purchasedProducts, error: purchasedError } = await supabase!
         .from('products')
-        .select('id, name, sku, unit, selling_price, low_stock_threshold')
+        .select('id, name, sku, unit, cost_price, selling_price, low_stock_threshold')
         .eq('is_active', true);
       
       if (purchasedError) throw purchasedError;
@@ -147,7 +147,9 @@ const Inventory: React.FC = () => {
         .from('inventory')
         .select(`
           *,
-          branches (id, name, location)
+          branches (id, name, location),
+          products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold),
+          manufactured_products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold)
         `)
         .order('last_updated', { ascending: false });
       
@@ -667,7 +669,7 @@ const Inventory: React.FC = () => {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-8">
         <div className="bg-white rounded-xl shadow-lg p-3">
           <div className="flex items-center">
             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -727,6 +729,29 @@ const Inventory: React.FC = () => {
               <p className="text-xs font-medium text-gray-600 truncate">Out of Stock</p>
               <p className="text-lg font-bold text-red-600">
                 {inventory.filter(item => item.quantity <= 0).length}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg p-3">
+          <div className="flex items-center">
+            <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-sm">💰</span>
+            </div>
+            <div className="ml-2 min-w-0 flex-1">
+              <p className="text-xs font-medium text-gray-600 truncate">Total Stock Value</p>
+              <p className="text-lg font-bold text-indigo-600">
+                ETB {(() => {
+                  console.log('🔍 Debug - Inventory items:', inventory.slice(0, 3));
+                  const total = inventory.reduce((total, item) => {
+                    const costPrice = item.products?.cost_price || item.manufactured_products?.cost_price || 0;
+                    console.log('🔍 Item:', item.product_name, 'Cost Price:', costPrice, 'Quantity:', item.quantity);
+                    return total + (costPrice * item.quantity);
+                  }, 0);
+                  console.log('🔍 Total Stock Value:', total);
+                  return total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                })()}
               </p>
             </div>
           </div>
