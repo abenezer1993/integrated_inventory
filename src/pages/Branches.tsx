@@ -48,6 +48,16 @@ const Branches: React.FC = () => {
     email: '',
     is_active: true
   });
+  const [selectedBranch, setSelectedBranch] = useState<BranchAnalytics | null>(null);
+  const [showBranchDetail, setShowBranchDetail] = useState(false);
+
+  const handleBranchClick = (branchId: string, branchName: string) => {
+    const branchData = branchAnalytics.find(b => b.branchId === branchId);
+    if (branchData) {
+      setSelectedBranch(branchData);
+      setShowBranchDetail(true);
+    }
+  };
 
   const fetchBranches = async () => {
     try {
@@ -491,7 +501,11 @@ const Branches: React.FC = () => {
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {branchAnalytics.map((analytics) => (
-                <div key={analytics.branchId} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div 
+                  key={analytics.branchId} 
+                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleBranchClick(analytics.branchId, analytics.branchName)}
+                >
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-lg font-semibold text-gray-900">{analytics.branchName}</h4>
                     <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -804,6 +818,143 @@ const Branches: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Branch Detail Modal */}
+      {showBranchDetail && selectedBranch && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative min-h-screen flex items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h3 className="text-xl font-semibold text-gray-900">Branch Details: {selectedBranch.branchName}</h3>
+                <button
+                  onClick={() => setShowBranchDetail(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left Column - Summary */}
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="text-lg font-semibold text-blue-900 mb-3">Summary</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Inventory:</span>
+                          <span className="font-bold text-blue-600">{selectedBranch.totalInventory.toLocaleString()} units</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Products:</span>
+                          <span className="font-bold text-blue-600">{selectedBranch.totalProducts}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Low Stock Items:</span>
+                          <span className="font-bold text-orange-600">{selectedBranch.lowStockItems}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <h4 className="text-lg font-semibold text-green-900 mb-3">Sales Performance</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Sales:</span>
+                          <span className="font-bold text-green-600">{selectedBranch.totalSales.toLocaleString()} units</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Revenue:</span>
+                          <span className="font-bold text-green-600">${selectedBranch.totalSalesAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Today's Sales:</span>
+                          <span className="font-bold text-green-600">{selectedBranch.todaySales.toLocaleString()} units</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Recent Sales (7d):</span>
+                          <span className="font-bold text-cyan-600">{selectedBranch.recentSales}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column - Charts/Actions */}
+                  <div className="space-y-4">
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <h4 className="text-lg font-semibold text-purple-900 mb-3">Quick Actions</h4>
+                      <div className="space-y-3">
+                        <button
+                          onClick={() => {
+                            setShowBranchDetail(false);
+                            // Navigate to sales page with this branch pre-selected
+                            window.location.href = `/sales?branch=${selectedBranch.branchId}`;
+                          }}
+                          className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          📊 View Sales for this Branch
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowBranchDetail(false);
+                            // Navigate to inventory page with this branch pre-selected
+                            window.location.href = `/inventory?branch=${selectedBranch.branchId}`;
+                          }}
+                          className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                        >
+                          📦 View Inventory for this Branch
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowBranchDetail(false);
+                            // Navigate to employees page for this branch
+                            window.location.href = `/employees?branch=${selectedBranch.branchId}`;
+                          }}
+                          className="w-full bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+                        >
+                          👥 View Employees for this Branch
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-yellow-50 p-4 rounded-lg">
+                      <h4 className="text-lg font-semibold text-yellow-900 mb-3">Performance Indicators</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span className="text-sm text-gray-700">Branch is Active</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                          <span className="text-sm text-gray-700">Has Low Stock Items</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          <span className="text-sm text-gray-700">Sales Data Available</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end p-6 border-t border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => setShowBranchDetail(false)}
+                  className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
