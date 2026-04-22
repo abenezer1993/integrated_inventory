@@ -100,15 +100,41 @@ const Branches: React.FC = () => {
       
       const analytics: BranchAnalytics[] = [];
       
-      // Get analytics for each branch (simplified to prevent timeouts)
+      // Get analytics for each branch
       for (const branch of branchesData) {
         try {
-          // Simplified analytics to prevent loading issues
+          // Calculate actual inventory count for this branch
+          const { data: inventoryData, error: inventoryError } = await supabase!
+            .from('inventory')
+            .select('quantity')
+            .eq('branch_id', branch.id);
+          
+          let totalInventory = 0;
+          if (!inventoryError && inventoryData) {
+            totalInventory = inventoryData.reduce((sum, item) => sum + (item.quantity || 0), 0);
+          }
+          
+          // Count unique products in this branch
+          const { data: productCount, error: productError } = await supabase!
+            .from('inventory')
+            .select('product_id, manufactured_product_id')
+            .eq('branch_id', branch.id);
+          
+          let totalProducts = 0;
+          if (!productError && productCount) {
+            const uniqueProducts = new Set();
+            productCount.forEach(item => {
+              if (item.product_id) uniqueProducts.add(item.product_id);
+              if (item.manufactured_product_id) uniqueProducts.add(item.manufactured_product_id);
+            });
+            totalProducts = uniqueProducts.size;
+          }
+          
           analytics.push({
             branchId: branch.id,
             branchName: branch.name,
-            totalInventory: 0,
-            totalProducts: 0,
+            totalInventory: totalInventory,
+            totalProducts: totalProducts,
             totalSales: 0,
             todaySales: 0,
             lowStockItems: 0,

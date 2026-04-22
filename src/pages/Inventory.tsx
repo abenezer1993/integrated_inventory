@@ -42,10 +42,25 @@ const Inventory: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showAdjustForm, setShowAdjustForm] = useState(false);
   const [showAddInventoryForm, setShowAddInventoryForm] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove'>('add');
   const [adjustmentQuantity, setAdjustmentQuantity] = useState('');
   const [adjustmentNotes, setAdjustmentNotes] = useState('');
+  const [transferForm, setTransferForm] = useState({
+    from_branch_id: '',
+    to_branch_id: '',
+    product_id: '',
+    quantity: '',
+    notes: ''
+  });
+  const [transferFormErrors, setTransferFormErrors] = useState({
+    from_branch_id: '',
+    to_branch_id: '',
+    product_id: '',
+    quantity: '',
+    notes: ''
+  });
   const [products, setProducts] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [inventoryForm, setInventoryForm] = useState({
@@ -66,10 +81,15 @@ const Inventory: React.FC = () => {
   const purchasedInventory = inventory.filter(item => item.source === 'purchased');
 
   // Filter products based on search
-  const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-    product.sku?.toLowerCase().includes(productSearch.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => {
+    if (!productSearch || productSearch.trim() === '') {
+      return true; // Show all products when search is empty
+    }
+    return (
+      product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(productSearch.toLowerCase())
+    );
+  });
 
   useEffect(() => {
     fetchInventory();
@@ -122,21 +142,32 @@ const Inventory: React.FC = () => {
     try {
       setLoading(true);
       
-      // Fetch inventory records first
-      const { data: inventoryData, error: inventoryError } = await supabase!
+      // Fetch inventory records - admins see all, regular users see only their branch
+      let query = supabase!
         .from('inventory')
         .select(`
           *,
           branches (id, name, location)
         `)
         .order('last_updated', { ascending: false });
+      
+      // Only filter by branch for non-admin users with valid branch_id
+      if (user?.role !== 'admin' && user?.branch_id) {
+        query = query.eq('branch_id', user.branch_id);
+      }
+      
+      const { data: inventoryData, error: inventoryError } = await query;
 
       if (inventoryError) {
         console.error('Fetch error:', inventoryError);
         throw inventoryError;
       }
 
+      console.log('=== INVENTORY FETCH DEBUG ===');
+      console.log('User role:', user?.role);
+      console.log('User branch_id:', user?.branch_id);
       console.log('Raw inventory data:', inventoryData);
+      console.log('Inventory data length:', inventoryData?.length);
       console.log('Inventory items with product_id:', inventoryData?.filter(item => item.product_id));
       console.log('Inventory items with manufactured_product_id:', inventoryData?.filter(item => item.manufactured_product_id));
 
@@ -282,6 +313,8 @@ const Inventory: React.FC = () => {
       }));
 
       console.log('Enriched inventory:', enrichedInventory);
+      console.log('Final inventory length:', enrichedInventory.length);
+      console.log('Setting inventory state...');
 
       setInventory(enrichedInventory);
     } catch (error) {
@@ -440,6 +473,124 @@ const Inventory: React.FC = () => {
     }));
   };
 
+  const handleTransferFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setTransferForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleStockTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!transferForm.from_branch_id || !transferForm.to_branch_id || !transferForm.product_id || !transferForm.quantity) {
+      alertFunction('Please fill all transfer fields');
+      return;
+    }
+
+    if (transferForm.from_branch_id === transferForm.to_branch_id) {
+      alertFunction('Cannot transfer to the same branch');
+      return;
+    }
+
+    try {
+      console.log('Initiating stock transfer:', transferForm);
+
+      // Check if product exists at source branch
+      const { data: sourceInventory, error: sourceError } = await supabase!
+        .from('inventory')
+        .select('quantity')
+        .eq('branch_id', transferForm.from_branch_id)
+        .or('product_id', transferForm.product_id)
+        .or('manufactured_product_id', transferForm.product_id)
+        .single();
+
+      if (sourceError || !sourceInventory) {
+        alertFunction('Product not found at source branch');
+        return;
+      }
+
+      const transferQuantity = parseInt(transferForm.quantity);
+      if (sourceInventory.quantity < transferQuantity) {
+        alertFunction(`Insufficient stock. Available: ${sourceInventory.quantity}, Requested: ${transferQuantity}`);
+        return;
+      }
+
+      // Check if product already exists at destination branch
+      const { data: destInventory, error: destError } = await supabase!
+        .from('inventory')
+        .select('quantity')
+        .eq('branch_id', transferForm.to_branch_id)
+        .or('product_id', transferForm.product_id)
+        .or('manufactured_product_id', transferForm.product_id)
+        .single();
+
+      const newDestQuantity = (destInventory?.quantity || 0) + transferQuantity;
+
+      // Update source branch (subtract)
+      const { error: updateSourceError } = await supabase!
+        .from('inventory')
+        .update({
+          quantity: sourceInventory.quantity - transferQuantity,
+          last_updated: new Date().toISOString()
+        })
+        .eq('branch_id', transferForm.from_branch_id)
+        .or('product_id', transferForm.product_id)
+        .or('manufactured_product_id', transferForm.product_id);
+
+      if (updateSourceError) throw updateSourceError;
+
+      // Update destination branch (add or create)
+      const { error: updateDestError } = await supabase!
+        .from('inventory')
+        .upsert({
+          branch_id: transferForm.to_branch_id,
+          product_id: transferForm.product_id,
+          manufactured_product_id: transferForm.product_id.includes('mfg') ? transferForm.product_id : null,
+          quantity: newDestQuantity,
+          last_updated: new Date().toISOString()
+        }, {
+          onConflict: 'branch_id,product_id,manufactured_product_id'
+        });
+
+      if (updateDestError) throw updateDestError;
+
+      // Record stock movement
+      const { error: movementError } = await supabase!
+        .from('stock_movements')
+        .insert({
+          movement_number: `TR${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+          type: 'transfer',
+          from_branch_id: transferForm.from_branch_id,
+          to_branch_id: transferForm.to_branch_id,
+          product_id: transferForm.product_id,
+          quantity: transferQuantity,
+          notes: `Stock transfer: ${transferForm.notes}`,
+          created_by: user?.id
+        });
+
+      if (movementError) throw movementError;
+
+      // Reset form and refresh
+      setTransferForm({
+        from_branch_id: '',
+        to_branch_id: '',
+        product_id: '',
+        quantity: '',
+        notes: ''
+      });
+      setShowTransferForm(false);
+      fetchInventory();
+      
+      alertFunction('Stock transferred successfully!');
+    } catch (error) {
+      console.error('Error transferring stock:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alertFunction(`Error transferring stock: ${errorMessage}`);
+    }
+  };
+
   const handleDeleteInventory = async (item: InventoryItem) => {
     const productName = item.product_name || 'Unknown Product';
     
@@ -505,6 +656,12 @@ const Inventory: React.FC = () => {
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
           >
             Adjust Stock
+          </button>
+          <button
+            onClick={() => setShowTransferForm(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg"
+          >
+            Transfer Stock
           </button>
         </div>
       </div>
@@ -868,13 +1025,13 @@ const Inventory: React.FC = () => {
                   value={inventoryForm.product_id}
                   onChange={(e) => {
                     handleInventoryFormChange(e);
-                    setProductSearch(e.target.options[e.target.selectedIndex]?.text || '');
+                    // Don't set productSearch on selection to avoid filtering issues
+                    setProductSearch('');
                   }}
-                  onInput={(e) => setProductSearch((e.target as HTMLSelectElement).value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   required
                 >
-                  <option value="">{productSearch ? 'No matching products' : 'Search and select a product...'}</option>
+                  <option value="">{productSearch && productSearch.trim() ? 'No matching products' : 'Select a product...'}</option>
                   {filteredProducts.map((product) => (
                     <option key={product.id} value={product.id}>
                       {product.name} ({product.sku}) - {product.type === 'manufactured' ? 'Manufactured' : 'Purchased'}
@@ -939,6 +1096,152 @@ const Inventory: React.FC = () => {
                   className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-4 py-2 rounded-lg font-medium transition-all text-sm"
                 >
                   Add Inventory
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Stock Modal */}
+      {showTransferForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
+            <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-5 py-3 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                    <span className="text-white text-lg">🚚</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Transfer Stock</h3>
+                </div>
+                <button
+                  onClick={() => setShowTransferForm(false)}
+                  className="text-white/80 hover:text-white transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleStockTransfer} className="p-5 space-y-4">
+              {/* Transfer Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    From Branch <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="from_branch_id"
+                    value={transferForm.from_branch_id}
+                    onChange={handleTransferFormChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                    required
+                  >
+                    <option value="">Select source branch</option>
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name} - {branch.location}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    To Branch <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="to_branch_id"
+                    value={transferForm.to_branch_id}
+                    onChange={handleTransferFormChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                    required
+                  >
+                    <option value="">Select destination branch</option>
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name} - {branch.location}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Product <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="product_id"
+                  value={transferForm.product_id}
+                  onChange={handleTransferFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                  required
+                >
+                  <option value="">Select product to transfer</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} ({product.sku}) - {product.type === 'manufactured' ? 'Manufactured' : 'Purchased'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Quantity <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  name="quantity"
+                  value={transferForm.quantity}
+                  onChange={handleTransferFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                  placeholder="Enter quantity to transfer"
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Transfer Notes
+                </label>
+                <textarea
+                  name="notes"
+                  value={transferForm.notes}
+                  onChange={handleTransferFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none"
+                  rows={3}
+                  placeholder="Reason for transfer (optional)"
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTransferForm(false);
+                    setTransferForm({
+                      from_branch_id: '',
+                      to_branch_id: '',
+                      product_id: '',
+                      quantity: '',
+                      notes: ''
+                    });
+                  }}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg font-medium transition-all text-sm"
+                >
+                  Transfer Stock
                 </button>
               </div>
             </form>
