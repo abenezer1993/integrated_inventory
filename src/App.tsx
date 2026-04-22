@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext-debug';
 import { SupabaseProvider } from './contexts/SupabaseContext';
 import { ConfirmationProvider } from './utils/confirmations';
+import DialogRenderer from './components/DialogRenderer';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
@@ -15,6 +16,7 @@ import Branches from './pages/Branches';
 import Reports from './pages/Reports';
 import BranchAnalytics from './pages/BranchAnalytics';
 import Expenses from './pages/Expenses';
+import Employees from './pages/Employees';
 import Login from './pages/Login';
 
 function App() {
@@ -36,6 +38,7 @@ function App() {
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="branch-analytics" element={<BranchAnalytics />} />
                 <Route path="expenses" element={<Expenses />} />
+                <Route path="employees" element={<Employees />} />
                 
                 {/* Warehouse Staff Routes */}
                 <Route path="purchases" element={<Purchases />} />
@@ -47,6 +50,7 @@ function App() {
               </Route>
             </Routes>
           </Router>
+          <DialogRenderer />
         </AuthProvider>
       </SupabaseProvider>
     </ConfirmationProvider>

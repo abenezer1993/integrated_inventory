@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useConfirmation } from '../utils/confirmations';
+import EditOrderModal from '../components/EditOrderModal';
+import ViewOrderModal from '../components/ViewOrderModal';
 import { Product, ManufacturingOrder, ManufacturingExpense } from '../types';
 
 const Manufacturing: React.FC = () => {
@@ -26,26 +27,25 @@ const Manufacturing: React.FC = () => {
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [materialsUsed, setMaterialsUsed] = useState<{ [key: string]: number }>({});
-
-  console.log('🏭 Manufacturing component rendering');
-  console.log('🏭 User in Manufacturing:', user);
-  console.log('🏭 hasPermission function:', hasPermission);
   
+  // Modal states
+  const [viewOrderModal, setViewOrderModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
+  const [editOrderModal, setEditOrderModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
+
+    
   // Check if user is loaded
   useEffect(() => {
     // Set authLoading to false immediately since we have the user context
     setAuthLoading(false);
   }, []);
   
-  // Test permission check
-  console.log('Testing manage_manufacturing permission:', hasPermission('manage_manufacturing'));
-
+  
   const fetchManufacturedInventory = async () => {
     try {
       const { data, error } = await supabase!
         .from('inventory')
         .select('*')
-        .eq('product_type', 'manufactured')
+        .not('manufactured_product_id', 'is', null)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -151,6 +151,7 @@ const Manufacturing: React.FC = () => {
     }
   };
 
+  
   useEffect(() => {
     if (!authLoading) {
       fetchManufacturingOrders();
@@ -174,54 +175,53 @@ const Manufacturing: React.FC = () => {
 
   const fetchManufacturingOrders = async () => {
     try {
-      console.log('=== FETCHING MANUFACTURING ORDERS ===');
+      console.log('fetchManufacturingOrders called - refreshing data...');
+      setLoading(true);
+      
+      // Simple query without complex joins
       const { data, error } = await supabase!
-        .rpc('get_manufacturing_orders_with_branches');
-
-      console.log('RPC call result:', { data, error });
+        .from('manufacturing_orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      console.log('Raw orders data:', data);
       
       if (error) {
-        console.error('RPC Error:', error);
-        console.error('Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        throw error;
+        console.error('Query Error:', error);
+        setManufacturingOrders([]);
+        return;
       }
-
-      console.log('Fetched data:', data);
-      console.log('Data length:', data?.length || 0);
-      console.log('Setting manufacturing orders state...');
       
-      // Transform the flat RPC result back to nested structure
-      const transformedData = (data || []).map((item: any) => ({
-        id: item.id,
-        order_number: item.order_number,
-        branch_id: item.branch_id,
-        product_name: item.product_name,
-        quantity_produced: item.quantity_produced,
-        status: item.status,
-        completed_at: item.completed_at,
-        notes: item.notes,
-        product_category: item.product_category,
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-        branches: {
-          id: item.branches_id,
-          name: item.branches_name,
-          location: item.branches_location
-        }
-      }));
+      // Get employee and branch information separately (optimized)
+      const ordersWithDetails = await Promise.all(
+        (data || []).map(async (order: any) => {
+          const [employeeResult, branchResult] = await Promise.all([
+            order.employee_id ? supabase!
+              .from('employees')
+              .select('id, full_name, position')
+              .eq('id', order.employee_id)
+              .single() : Promise.resolve({ data: null, error: null }),
+            order.branch_id ? supabase!
+              .from('branches')
+              .select('id, name, location')
+              .eq('id', order.branch_id)
+              .single() : Promise.resolve({ data: null, error: null })
+          ]);
+          
+          return {
+            ...order,
+            employee: employeeResult.data,
+            branches: branchResult.data
+          };
+        })
+      );
       
-      console.log('Transformed data:', transformedData);
-      
-      setManufacturingOrders(transformedData);
-      console.log('State updated with new data');
-      console.log('Current manufacturing orders state length:', transformedData?.length || 0);
+      console.log('Orders with details:', ordersWithDetails);
+      console.log('Setting manufacturing orders state with', ordersWithDetails.length, 'items');
+      setManufacturingOrders(ordersWithDetails);
     } catch (error) {
       console.error('Error fetching manufacturing orders:', error);
+      setManufacturingOrders([]);
     } finally {
       setLoading(false);
     }
@@ -231,7 +231,7 @@ const Manufacturing: React.FC = () => {
     e.preventDefault();
     
     if (!selectedCategory || !productName || !quantity || !selectedBranch || !selectedEmployee) {
-      alertFunction('Please fill in all required fields: category, product name, quantity, branch, and employee');
+      console.error('Please fill in all required fields: category, product name, quantity, branch, and employee');
       return;
     }
 
@@ -244,21 +244,8 @@ const Manufacturing: React.FC = () => {
         quantity_produced: parseInt(quantity)
       });
       
-      console.log('Creating manufacturing order:', {
-        orderNumber,
-        branch_id: selectedBranch,
-        product_name: productName,
-        quantity_produced: parseInt(quantity),
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        notes: notes,
-        product_category: selectedCategory,
-        employee_id: selectedEmployee,
-        materials_used: materialCosts
-      });
       
       // Create manufacturing order using RPC to bypass RLS
-      console.log('Creating manufacturing order...');
       const { data: orderData, error: orderError } = await supabase!
         .rpc('create_manufacturing_order_with_branch', {
           order_number_param: orderNumber,
@@ -271,16 +258,30 @@ const Manufacturing: React.FC = () => {
           product_category_param: selectedCategory
         });
 
-      console.log('Order creation result:', { data: orderData, error: orderError });
 
       if (orderError) throw orderError;
       
-      console.log('Manufacturing order created successfully:', orderData);
-      console.log('Order data type:', typeof orderData);
-      console.log('Order data length:', orderData?.length);
+
+      // Update the order with employee information
+      const orderId = orderData?.[0]?.id; // RPC returns array, get first item's id
+      
+      if (selectedEmployee && orderId) {
+        const { error: updateError, data: updateData } = await supabase!
+          .from('manufacturing_orders')
+          .update({ employee_id: selectedEmployee })
+          .eq('id', orderId)
+          .select()
+          .single();
+          
+          
+        if (updateError) {
+          console.error('Error updating order with employee:', updateError);
+        } else {
+        }
+      } else {
+      }
 
       // Create manufactured product record using RPC to bypass RLS
-      console.log('Creating manufactured product record for:', productName);
       const { data: productData, error: productError } = await supabase!
         .rpc('create_manufactured_product_with_branch', {
           product_name: productName,
@@ -288,15 +289,12 @@ const Manufacturing: React.FC = () => {
           branch_id: selectedBranch
         });
       
-      console.log('Manufactured product creation result:', { data: productData, error: productError });
       if (productError) throw productError;
       
       // Manufactured product is created successfully
-      console.log('Manufactured product created successfully:', productData);
-      const productId = productData[0]?.id; // RPC returns array
+      const productId = productData?.[0]?.id; // RPC returns array
       
       // Create inventory record for manufactured product
-      console.log('Creating inventory record for manufactured product');
       const { data: inventoryData, error: inventoryError } = await supabase!
         .from('inventory')
         .insert({
@@ -307,11 +305,9 @@ const Manufacturing: React.FC = () => {
         .select()
         .single();
       
-      console.log('Inventory record creation result:', { data: inventoryData, error: inventoryError });
       if (inventoryError) throw inventoryError;
       
       // Record stock movement
-      console.log('Recording stock movement');
       const { data: stockMovement, error: stockMovementError } = await supabase!
         .from('stock_movements')
         .insert({
@@ -326,7 +322,6 @@ const Manufacturing: React.FC = () => {
         .select()
         .single();
       
-      console.log('Stock movement recorded:', { data: stockMovement, error: stockMovementError });
       if (stockMovementError) throw stockMovementError;
 
       // Reset form and refresh data
@@ -339,7 +334,6 @@ const Manufacturing: React.FC = () => {
       setShowAddForm(false);
       fetchManufacturingOrders();
       
-      alertFunction('Production recorded successfully!');
     } catch (error: any) {
       console.error('Error recording production:', error);
       
@@ -365,26 +359,29 @@ const Manufacturing: React.FC = () => {
         code: error?.code
       });
       
-      alertFunction(errorMessage);
+      console.error('Error:', errorMessage);
     }
   };
 
   const handleViewOrder = (order: any) => {
-    alertFunction(`View Order: ${order.order_number}\n\nProduct: ${order.product_name}\nQuantity: ${order.quantity_produced}\nStatus: ${order.status}\nNotes: ${order.notes || 'No notes'}`);
+    console.log('handleViewOrder called with order:', order);
+    setViewOrderModal({ isOpen: true, order });
   };
 
   
   const handleEditOrder = (order: any) => {
-    const newQuantity = prompt('Edit Quantity:', order.quantity_produced);
-    const newNotes = prompt('Edit Notes:', order.notes || '');
-    
-    if (newQuantity !== null && newNotes !== null) {
-      updateManufacturingOrder(order.id, parseInt(newQuantity), newNotes);
-    }
+    console.log('handleEditOrder called with order:', order);
+    setEditOrderModal({ isOpen: true, order });
+  };
+
+  const handleSaveOrder = (orderId: string, quantity: number, notes: string) => {
+    updateManufacturingOrder(orderId, quantity, notes);
   };
 
   const updateManufacturingOrder = async (orderId: string, newQuantity: number, newNotes: string) => {
     try {
+      console.log('Updating manufacturing order:', { orderId, newQuantity, newNotes });
+      
       const { error } = await supabase!
         .from('manufacturing_orders')
         .update({
@@ -394,28 +391,49 @@ const Manufacturing: React.FC = () => {
         })
         .eq('id', orderId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
       
-      alertFunction('Order updated successfully!');
+      console.log('Order updated successfully');
+      console.log(`Order updated successfully!\n\nNew Quantity: ${newQuantity} units\nNotes: ${newNotes || 'None'}`);
       fetchManufacturingOrders();
     } catch (error: any) {
       console.error('Error updating order:', error);
-      alertFunction('Error updating order. Please try again.');
     }
   };
 
   const handleDeleteOrder = (order: any) => {
+    console.log('handleDeleteOrder called with order:', order);
+    console.log('Order ID:', order.id);
+    console.log('showConfirmation function:', showConfirmation);
+    
     showConfirmation({
       title: 'Delete Manufacturing Order',
       message: `Are you sure you want to delete order ${order.order_number}? This action cannot be undone.`,
-      onConfirm: () => deleteManufacturingOrder(order.id),
+      onConfirm: () => {
+        console.log('Delete confirmed for order ID:', order.id);
+        deleteManufacturingOrder(order.id);
+      },
       type: 'danger',
       confirmText: 'Delete',
       cancelText: 'Cancel'
     });
   };
 
-  const handleTransferToInventory = async (order: any) => {
+  const handleTransferToInventory = (order: any) => {
+    showConfirmation({
+      title: 'Transfer to Inventory',
+      message: `Transfer ${order.quantity_produced} units of "${order.product_name}" to inventory?\n\nThis will add the product to your inventory stock.`,
+      onConfirm: () => performTransfer(order),
+      type: 'info',
+      confirmText: 'Transfer',
+      cancelText: 'Cancel'
+    });
+  };
+
+  const performTransfer = async (order: any) => {
     try {
       console.log('Transferring to inventory:', order);
       
@@ -429,165 +447,98 @@ const Manufacturing: React.FC = () => {
       console.log('Product lookup result:', { data: productData, error: productError });
       
       let productId = productData?.id;
-      
-      // If product doesn't exist, create it
-      if (productError || !productData) {
-        console.log('Product not found, creating new manufactured product...');
+      if (!productId) {
+        // Create the manufactured product if it doesn't exist
         const { data: newProduct, error: createError } = await supabase!
-          .rpc('create_manufactured_product_for_transfer', {
-            product_name: order.product_name,
-            quantity: order.quantity_produced
-          });
+          .from('manufactured_products')
+          .insert({
+            name: order.product_name,
+            category: order.product_category || 'uncategorized'
+          })
+          .select()
+          .single();
         
-        console.log('Product creation result:', { data: newProduct, error: createError });
-        
-        if (createError || !newProduct) {
-          console.error('Error creating manufactured product:', createError);
-          alertFunction('Error creating manufactured product. Please try again.');
-          return;
-        }
-        
-        productId = newProduct;
+        if (createError) throw createError;
+        productId = newProduct.id;
       }
       
-      // Check if already transferred to inventory
-      const { data: existingInventory, error: inventoryCheckError } = await supabase!
+      // Create inventory record
+      const { data: inventoryData, error: inventoryError } = await supabase!
         .from('inventory')
-        .select('id')
-        .eq('manufactured_product_id', productId)
+        .insert({
+          manufactured_product_id: productId,
+          quantity: order.quantity_produced,
+          last_updated: new Date().toISOString()
+        })
+        .select()
         .single();
       
-      if (existingInventory && !inventoryCheckError) {
-        alertFunction('This product has already been transferred to inventory.');
-        return;
-      }
+      console.log('Inventory creation result:', { data: inventoryData, error: inventoryError });
       
-      // Call the transfer function with the correct UUID
-      const { data, error } = await supabase!
-        .rpc('transfer_manufactured_to_inventory', {
-          p_manufactured_product_id: productId,
-          p_quantity: order.quantity_produced,
-          p_transfer_notes: `Transfer from manufacturing order ${order.order_number}`
-        });
-
-      console.log('Transfer result:', { data, error });
-
-      if (error) {
-        console.error('Error transferring to inventory:', error);
-        alertFunction('Error transferring to inventory. Please try again.');
-        return;
-      }
-
-      if (data) {
-        alertFunction('Product transferred to inventory successfully!');
-        fetchManufacturingOrders();
-      }
+      if (inventoryError) throw inventoryError;
+      
+      console.log(`Successfully transferred ${order.quantity_produced} units of "${order.product_name}" to inventory!`);
+      fetchManufacturingOrders();
     } catch (error: any) {
-      console.error('Error in handleTransferToInventory:', error);
-      alertFunction('Error transferring to inventory. Please try again.');
+      console.error('Error in performTransfer:', error);
+      console.error(`Error transferring to inventory: ${error.message || 'Unknown error'}. Please try again.`);
     }
   };
 
   const deleteManufacturingOrder = async (orderId: string) => {
     try {
-      console.log('=== STARTING DELETE ===');
-      console.log('Attempting to delete manufacturing order:', orderId);
+      console.log('deleteManufacturingOrder called with orderId:', orderId);
       
-      // First get the manufacturing order to find the product name
-      console.log('Step 1: Fetching order data...');
-      const { data: orderData, error: fetchError } = await supabase!
+      // First, let's try the simple direct delete again but with detailed error checking
+      console.log('Testing direct delete with detailed error checking...');
+      const { error: directError } = await supabase!
         .from('manufacturing_orders')
-        .select('product_name')
-        .eq('id', orderId)
-        .single();
-      
-      console.log('Order data result:', { data: orderData, error: fetchError });
-      
-      if (fetchError) {
-        console.error('Error fetching order data:', fetchError);
-        throw fetchError;
-      }
-      
-      // Delete related stock movements
-      console.log('Step 2: Deleting stock movements...');
-      const { error: stockError } = await supabase!
-        .from('stock_movements')
         .delete()
-        .eq('reference_id', orderId)
-        .eq('reference_type', 'manufacturing_order');
-      
-      console.log('Stock movement delete result:', { error: stockError });
-      
-      if (stockError) {
-        console.error('Error deleting stock movements:', stockError);
+        .eq('id', orderId);
+
+      console.log('Direct delete error details:', {
+        error: directError,
+        message: directError?.message,
+        details: directError?.details,
+        hint: directError?.hint,
+        code: directError?.code
+      });
+
+      if (!directError) {
+        console.log('Direct delete succeeded, but record still exists - this is very unusual!');
       }
-      
-      // Delete the manufactured product (find by name)
-      if (orderData?.product_name) {
-        console.log('Step 3: Deleting manufactured product:', orderData.product_name);
-        
-        // First get the manufactured product ID to delete inventory records
-        const { data: productData, error: productFetchError } = await supabase!
-          .from('manufactured_products')
-          .select('id')
-          .eq('name', orderData.product_name)
-          .single();
-        
-        if (productFetchError) {
-          console.error('Error fetching product ID:', productFetchError);
-        } else if (productData?.id) {
-          // Delete inventory records for this manufactured product
-          console.log('Step 3.1: Deleting inventory records for product:', productData.id);
-          const { error: inventoryError } = await supabase!
-            .from('inventory')
-            .delete()
-            .eq('manufactured_product_id', productData.id);
-          
-          console.log('Inventory delete result:', { error: inventoryError });
-          
-          if (inventoryError) {
-            console.error('Error deleting inventory records:', inventoryError);
-          }
-        }
-        
-        // Now delete the manufactured product
-        const { error: productError } = await supabase!
-          .from('manufactured_products')
-          .delete()
-          .eq('name', orderData.product_name);
-        
-        console.log('Product delete result:', { error: productError });
-      }
-      
-      // Then delete manufacturing order using RPC
-      console.log('Step 4: Deleting manufacturing order via RPC...');
+
+      // Now try RPC function as backup
+      console.log('Trying RPC function as backup...');
       const { data, error } = await supabase!
-        .rpc('delete_manufacturing_order', { 
-          order_id: orderId 
+        .rpc('delete_manufacturing_order_with_related', {
+          order_id_param: orderId
         });
 
       console.log('RPC delete result:', { data, error });
 
       if (error) {
-        console.error('Error deleting manufacturing order via RPC:', error);
-        throw error;
+        console.error('RPC delete error:', error);
+        if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+          console.log('RPC function not created yet - you need to run the SQL file first!');
+        }
       }
-      
-      if (!data) {
-        console.error('RPC delete returned false - permission denied');
-        throw new Error('Permission denied: Only admin users can delete manufacturing orders');
+
+      if (data && data.length > 0) {
+        const result = data[0];
+        if (result.success) {
+          console.log('Order deleted successfully via RPC:', result.message);
+          // Refresh data
+          fetchManufacturingOrders();
+        } else {
+          console.error('RPC delete failed:', result.message);
+        }
+      } else {
+        console.error('RPC delete returned no data');
       }
-      
-      console.log('=== DELETE COMPLETED ===');
-      console.log('Manufacturing order and related data deleted successfully');
-      alertFunction('Order deleted successfully!');
-      
-      console.log('Step 5: Refreshing data...');
-      await fetchManufacturingOrders();
       
     } catch (error: any) {
-      console.error('Error in deleteManufacturingOrder:', error);
-      alertFunction(`Error deleting order: ${error.message || 'Unknown error'}. Please try again.`);
+      console.error('Error deleting order:', error);
     }
   };
 
@@ -842,6 +793,9 @@ const Manufacturing: React.FC = () => {
                   Branch
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Employee
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Quantity
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -853,98 +807,127 @@ const Manufacturing: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Notes
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50 border-l border-gray-200">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {manufacturingOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {order.order_number}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div>
-                      <p className="font-medium">{order.product_name || 'Unknown Product'}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                      Manufactured
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                      {order.product_category === 'gypsum' ? 'Gypsum Work' : order.product_category === 'wood' ? 'Wood Work' : 'N/A'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {order.branches?.name || 'Unknown Branch'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {order.quantity_produced} units
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      order.status === 'completed' 
-                        ? 'bg-green-100 text-green-800' 
-                        : order.status === 'in_progress'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {order.notes || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex space-x-2">
+              {manufacturingOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center">
+                      <span className="text-3xl mb-2"></span>
+                      <span className="text-lg font-medium text-gray-900">No production history found</span>
+                      <span className="text-sm text-gray-500 mt-1">
+                        Start manufacturing products to see them appear here
+                      </span>
                       <button
-                        onClick={() => handleViewOrder(order)}
-                        className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded"
-                        title="View Order"
+                        onClick={() => setShowAddForm(true)}
+                        className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleEditOrder(order)}
-                        className="text-green-600 hover:text-green-900 p-1 hover:bg-green-50 rounded"
-                        title="Edit Order"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleTransferToInventory(order)}
-                        className="text-orange-600 hover:text-orange-900 p-1 hover:bg-orange-50 rounded"
-                        title="Transfer to Inventory"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteOrder(order)}
-                        className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded"
-                        title="Delete Order"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        Record Production
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                manufacturingOrders.map((order) => (
+                  <tr key={order.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {order.order_number}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div>
+                        <p className="font-medium">{order.product_name || 'Unknown Product'}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                        Manufactured
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                        {order.product_category === 'gypsum' ? 'Gypsum Work' : order.product_category === 'wood' ? 'Wood Work' : 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {order.branches?.name || 'Unknown Branch'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {order.employee?.full_name || order.employee_name || 'Not Assigned'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {order.quantity_produced} units
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        order.status === 'completed' 
+                          ? 'bg-green-100 text-green-800' 
+                          : order.status === 'in_progress'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {order.notes || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 sticky right-0 bg-white border-l border-gray-200">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => {
+                            console.log('View button clicked for order:', order);
+                            handleViewOrder(order);
+                          }}
+                          className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded"
+                          title="View Order"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => {
+                            console.log('Edit button clicked for order:', order);
+                            handleEditOrder(order);
+                          }}
+                          className="text-green-600 hover:text-green-900 p-1 hover:bg-green-50 rounded"
+                          title="Edit Order"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleTransferToInventory(order)}
+                          className="text-orange-600 hover:text-orange-900 p-1 hover:bg-orange-50 rounded"
+                          title="Transfer to Inventory"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOrder(order)}
+                          className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded"
+                          title="Delete Order"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1242,6 +1225,20 @@ const Manufacturing: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* Professional Modals */}
+      <ViewOrderModal
+        isOpen={viewOrderModal.isOpen}
+        order={viewOrderModal.order}
+        onClose={() => setViewOrderModal({ isOpen: false, order: null })}
+      />
+      
+      <EditOrderModal
+        isOpen={editOrderModal.isOpen}
+        order={editOrderModal.order}
+        onClose={() => setEditOrderModal({ isOpen: false, order: null })}
+        onSave={handleSaveOrder}
+      />
     </div>
   );
 };

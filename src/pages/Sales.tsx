@@ -4,6 +4,7 @@ import { alertFunction } from '../utils/alerts';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useConfirmation } from '../utils/confirmations';
+import { ROLE_PERMISSIONS } from '../utils/accessControl';
 
 interface Sale {
   id: string;
@@ -698,7 +699,13 @@ const Sales: React.FC = () => {
           >
             🔄 Refresh
           </button>
-          {hasPermission('create_sales') && (
+          {(() => {
+            const canCreateSale = hasPermission('create_sales');
+            console.log('🔍 Debug - User role:', user?.role);
+            console.log('🔍 Debug - hasPermission(create_sales):', canCreateSale);
+            console.log('🔍 Debug - ROLE_PERMISSIONS for role:', ROLE_PERMISSIONS[user?.role as any]);
+            return canCreateSale;
+          })() && (
             <button
               onClick={() => setShowForm(!showForm)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 shadow-md hover:shadow-lg"

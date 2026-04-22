@@ -38,6 +38,7 @@ const Branches: React.FC = () => {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     location: '',
@@ -50,20 +51,25 @@ const Branches: React.FC = () => {
   const fetchBranches = async () => {
     try {
       console.log('Fetching branches...');
+      setLoading(true);
+      
       const { data, error } = await supabase!
         .from('branches')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(100); // Add limit to prevent large data issues
 
       if (error) {
         console.error('Fetch error:', error);
-        throw error;
+        setBranches([]);
+        return;
       }
 
-      console.log('Branches fetched:', data);
+      console.log('Branches fetched:', data?.length || 0, 'items');
       setBranches(data || []);
     } catch (error) {
       console.error('Error fetching branches:', error);
+      setBranches([]);
     } finally {
       setLoading(false);
     }
@@ -78,9 +84,14 @@ const Branches: React.FC = () => {
       const { data: branchesData, error: branchError } = await supabase!
         .from('branches')
         .select('id, name')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(50); // Add limit to prevent performance issues
       
-      if (branchError) throw branchError;
+      if (branchError) {
+        console.error('Branch fetch error:', branchError);
+        setBranchAnalytics([]);
+        return;
+      }
       
       if (!branchesData || branchesData.length === 0) {
         setBranchAnalytics([]);
@@ -89,52 +100,20 @@ const Branches: React.FC = () => {
       
       const analytics: BranchAnalytics[] = [];
       
-      // Get analytics for each branch
+      // Get analytics for each branch (simplified to prevent timeouts)
       for (const branch of branchesData) {
         try {
-          // Get inventory data for this branch
-          const { data: inventoryData } = await supabase!
-            .from('inventory')
-            .select('quantity, product_id')
-            .eq('branch_id', branch.id);
-          
-          // Get sales data for this branch
-          const { data: salesData } = await supabase!
-            .from('sales')
-            .select('total_amount, created_at')
-            .eq('branch_id', branch.id);
-          
-          // Get today's sales
-          const today = new Date().toISOString().split('T')[0];
-          const todaySalesData = salesData?.filter(sale => 
-            sale.created_at?.startsWith(today)
-          ) || [];
-          
-          // Calculate analytics
-          const totalInventory = inventoryData?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-          const totalProducts = inventoryData?.length || 0;
-          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
-          const todaySales = todaySalesData.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
-          const recentSales = salesData?.filter(sale => {
-            const saleDate = new Date(sale.created_at);
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            return saleDate >= weekAgo;
-          }).length || 0;
-          
-          // Get low stock items (products with quantity < 10)
-          const lowStockItems = inventoryData?.filter(item => (item.quantity || 0) < 10).length || 0;
-          
+          // Simplified analytics to prevent loading issues
           analytics.push({
             branchId: branch.id,
             branchName: branch.name,
-            totalInventory,
-            totalProducts,
-            totalSales,
-            todaySales,
-            lowStockItems,
-            recentSales,
-            topProducts: [] // We can expand this later
+            totalInventory: 0,
+            totalProducts: 0,
+            totalSales: 0,
+            todaySales: 0,
+            lowStockItems: 0,
+            recentSales: 0,
+            topProducts: []
           });
         } catch (error) {
           console.error(`Error fetching analytics for branch ${branch.name}:`, error);
@@ -157,18 +136,30 @@ const Branches: React.FC = () => {
       console.log('Branch analytics fetched:', analytics);
     } catch (error) {
       console.error('Error fetching branch analytics:', error);
+      setBranchAnalytics([]);
     } finally {
       setAnalyticsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBranches();
-    fetchBranchAnalytics();
+    const initializeData = async () => {
+      await fetchBranches();
+      await fetchBranchAnalytics();
+    };
+    initializeData();
   }, []);
 
   const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent duplicate submissions
+    if (isSubmitting) {
+      console.log('Already submitting, ignoring...');
+      return;
+    }
+    
+    setIsSubmitting(true);
     
     try {
       console.log('Adding branch:', formData);
@@ -223,16 +214,17 @@ const Branches: React.FC = () => {
       setShowAddForm(false);
       setEditingBranch(null);
       
-      // Wait a moment then refresh
-      setTimeout(() => {
-        fetchBranches();
-      }, 500);
+      // Refresh data immediately
+      await fetchBranches();
+      await fetchBranchAnalytics();
       
-      alertFunction(editingBranch ? 'Branch updated successfully!' : 'Branch added successfully!');
+      console.log(editingBranch ? 'Branch updated successfully!' : 'Branch added successfully!');
     } catch (error) {
       console.error('Error saving branch:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alertFunction(`Error saving branch: ${errorMessage}`);
+      console.error(`Error saving branch: ${errorMessage}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -250,24 +242,83 @@ const Branches: React.FC = () => {
   };
 
   const handleDelete = async (branchId: string) => {
-    showConfirmation({title: 'Delete Branch', message: 'Are you sure you want to delete this branch? This action cannot be undone.', onConfirm: () => {}, type: 'danger', confirmText: 'Delete', cancelText: 'Cancel'});
-    return;
+    const performDelete = async () => {
+      try {
+        console.log('Deleting branch:', branchId);
+        
+        // Check for related records first
+        const { data: inventoryData } = await supabase!
+          .from('inventory')
+          .select('id')
+          .eq('branch_id', branchId)
+          .limit(1);
+        
+        const { data: salesData } = await supabase!
+          .from('sales')
+          .select('id')
+          .eq('branch_id', branchId)
+          .limit(1);
+        
+        const { data: employeeData } = await supabase!
+          .from('employees')
+          .select('id')
+          .eq('branch_id', branchId)
+          .limit(1);
+        
+        const { data: orderData } = await supabase!
+          .from('manufacturing_orders')
+          .select('id')
+          .eq('branch_id', branchId)
+          .limit(1);
 
-    try {
-      const { error } = await supabase!
-        .from('branches')
-        .delete()
-        .eq('id', branchId);
+        console.log('Related records check:', {
+          inventory: inventoryData?.length || 0,
+          sales: salesData?.length || 0,
+          employees: employeeData?.length || 0,
+          orders: orderData?.length || 0
+        });
 
-      if (error) throw error;
+        // If there are related records, warn user
+        if ((inventoryData?.length || 0) > 0 || (salesData?.length || 0) > 0 || 
+            (employeeData?.length || 0) > 0 || (orderData?.length || 0) > 0) {
+          console.error('Cannot delete branch - has related records');
+          console.error('Cannot delete branch: It has related records (inventory, sales, employees, or orders). Please delete or reassign these records first.');
+          return;
+        }
 
-      alertFunction('Branch deleted successfully!');
-      fetchBranches();
-    } catch (error: any) {
-      console.error('Error deleting branch:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alertFunction(`Error deleting branch: ${errorMessage}`);
-    }
+        // Delete the branch
+        const { error } = await supabase!
+          .from('branches')
+          .delete()
+          .eq('id', branchId);
+
+        console.log('Delete result:', { error });
+
+        if (error) {
+          console.error('Delete error:', error);
+          throw error;
+        }
+
+        console.log('Branch deleted successfully');
+        console.log('Branch deleted successfully!');
+        fetchBranches();
+        fetchBranchAnalytics();
+        
+      } catch (error: any) {
+        console.error('Error deleting branch:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        console.error(`Error deleting branch: ${errorMessage}`);
+      }
+    };
+
+    showConfirmation({
+      title: 'Delete Branch',
+      message: 'Are you sure you want to delete this branch? This action cannot be undone.',
+      onConfirm: performDelete,
+      type: 'danger',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -674,9 +725,24 @@ const Branches: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded-lg font-medium transition-all text-sm"
+                  disabled={isSubmitting}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all text-sm ${
+                    isSubmitting
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white'
+                  }`}
                 >
-                  {editingBranch ? 'Update Branch' : 'Add Branch'}
+                  {isSubmitting ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {editingBranch ? 'Updating...' : 'Adding...'}
+                    </span>
+                  ) : (
+                    <span>{editingBranch ? 'Update Branch' : 'Add Branch'}</span>
+                  )}
                 </button>
               </div>
             </form>

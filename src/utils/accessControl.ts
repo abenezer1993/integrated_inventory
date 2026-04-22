@@ -5,11 +5,11 @@ export const ROLE_PERMISSIONS = {
   [UserRole.ADMIN]: [
     'manage_users', 'manage_branches', 'manage_products', 'manage_inventory',
     'manage_sales', 'manage_purchases', 'manage_manufacturing', 'manage_expenses',
-    'view_all_reports', 'access_all_branches', 'manage_system_settings'
+    'view_all_reports', 'access_all_branches', 'manage_system_settings', 'create_sales'
   ],
   [UserRole.BRANCH_MANAGER]: [
     'manage_branch_users', 'view_branch_reports', 'manage_branch_sales',
-    'manage_branch_inventory', 'manage_branch_expenses', 'access_own_branch'
+    'manage_branch_inventory', 'manage_branch_expenses', 'access_own_branch', 'create_sales'
   ],
   [UserRole.SALES_STAFF]: [
     'create_sales', 'view_customers', 'manage_customers', 'view_products'
@@ -40,7 +40,7 @@ export const canAccessPage = (userRole: UserRole, pagePermission: string): boole
     'manage_inventory': ['admin', 'branch_manager', 'warehouse_staff'],
     'adjust_stock_levels': ['admin', 'branch_manager', 'warehouse_staff'],
     'view_inventory_movements': ['admin', 'branch_manager', 'warehouse_staff'],
-    'create_sales': ['admin', 'sales_staff'],
+    'create_sales': ['admin', 'sales_staff', 'branch_manager'],
     'manage_sales': ['admin', 'sales_staff'],
     'view_sales': ['admin', 'branch_manager', 'sales_staff'],
     'manage_sales_orders': ['admin', 'sales_staff'],

@@ -54,6 +54,7 @@ const Inventory: React.FC = () => {
     quantity: ''
   });
   const [filter, setFilter] = useState<'all' | 'manufactured' | 'purchased'>('all');
+  const [productSearch, setProductSearch] = useState('');
 
   // Filter inventory based on selected source
   const filteredInventory = inventory.filter(item => {
@@ -63,6 +64,12 @@ const Inventory: React.FC = () => {
 
   const manufacturedInventory = inventory.filter(item => item.source === 'manufactured');
   const purchasedInventory = inventory.filter(item => item.source === 'purchased');
+
+  // Filter products based on search
+  const filteredProducts = products.filter(product => 
+    product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+    product.sku?.toLowerCase().includes(productSearch.toLowerCase())
+  );
 
   useEffect(() => {
     fetchInventory();
@@ -859,12 +866,16 @@ const Inventory: React.FC = () => {
                 <select
                   name="product_id"
                   value={inventoryForm.product_id}
-                  onChange={handleInventoryFormChange}
+                  onChange={(e) => {
+                    handleInventoryFormChange(e);
+                    setProductSearch(e.target.options[e.target.selectedIndex]?.text || '');
+                  }}
+                  onInput={(e) => setProductSearch((e.target as HTMLSelectElement).value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   required
                 >
-                  <option value="">Select a product</option>
-                  {products.map((product) => (
+                  <option value="">{productSearch ? 'No matching products' : 'Search and select a product...'}</option>
+                  {filteredProducts.map((product) => (
                     <option key={product.id} value={product.id}>
                       {product.name} ({product.sku}) - {product.type === 'manufactured' ? 'Manufactured' : 'Purchased'}
                     </option>

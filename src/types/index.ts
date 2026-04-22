@@ -145,6 +145,12 @@ export interface ManufacturingOrder {
   order_number: string;
   branch_id: string;
   employee_id?: string;
+  employee?: {
+    id: string;
+    full_name: string;
+    position: string;
+  };
+  employee_name?: string; // Fallback for RPC data
   finished_product_id?: string;
   product_name?: string;
   quantity_produced: number;

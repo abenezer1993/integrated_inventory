@@ -130,8 +130,17 @@ const Layout: React.FC = () => {
                   location.pathname === '/user-management' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
-                <span className="text-xl min-w-[24px] text-center">👥</span>
+                <span className="text-xl min-w-[24px] text-center">&#x1F465;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Users</span>}
+              </a>
+              <a
+                href="/employees"
+                className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
+                  location.pathname === '/employees' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <span className="text-xl min-w-[24px] text-center">&#x1F475;</span>
+                {sidebarOpen && <span className="font-medium ml-3">Employees</span>}
               </a>
               <a
                 href="/reports"
@@ -139,7 +148,7 @@ const Layout: React.FC = () => {
                   location.pathname === '/reports' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
-                <span className="text-xl min-w-[24px] text-center">📈</span>
+                <span className="text-xl min-w-[24px] text-center">&#x1F4C8;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Reports</span>}
               </a>
               <a
@@ -189,8 +198,17 @@ const Layout: React.FC = () => {
                   location.pathname === '/customers' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
-                <span className="text-xl min-w-[24px] text-center">👤</span>
+                <span className="text-xl min-w-[24px] text-center">&#x1F464;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Customers</span>}
+              </a>
+              <a
+                href="/employees"
+                className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
+                  location.pathname === '/employees' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <span className="text-xl min-w-[24px] text-center">&#x1F475;</span>
+                {sidebarOpen && <span className="font-medium ml-3">Employees</span>}
               </a>
               <a
                 href="/branch-analytics"
@@ -198,7 +216,7 @@ const Layout: React.FC = () => {
                   location.pathname === '/branch-analytics' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
-                <span className="text-xl min-w-[24px] text-center">🏢</span>
+                <span className="text-xl min-w-[24px] text-center">&#x1F3E2;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Branch Analytics</span>}
               </a>
               <a

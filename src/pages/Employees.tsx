@@ -52,13 +52,54 @@ const Employees: React.FC = () => {
   });
 
   useEffect(() => {
+    console.log('Employees component mounted');
+    testDatabaseConnection();
     fetchEmployees();
     fetchDepartments();
     fetchBranches();
   }, []);
 
+  const testDatabaseConnection = async () => {
+    try {
+      console.log('Testing database connection...');
+      
+      // Test basic connection
+      const { data, error } = await supabase!
+        .from('branches')
+        .select('count')
+        .limit(1);
+      
+      console.log('Database connection test:', { data, error });
+      
+      if (error) {
+        console.error('Database connection issue:', error);
+      } else {
+        console.log('Database connection OK');
+      }
+    } catch (error) {
+      console.error('Database test error:', error);
+    }
+  };
+
   const fetchEmployees = async () => {
     try {
+      console.log('Fetching employees...');
+      
+      // First check if table exists by doing a simple count
+      const { count, error: countError } = await supabase!
+        .from('employees')
+        .select('*', { count: 'exact', head: true });
+      
+      console.log('Employees count check:', { count, error: countError });
+      
+      if (countError) {
+        console.error('Employees table might not exist:', countError);
+        setEmployees([]);
+        setLoading(false);
+        return;
+      }
+      
+      // If table exists, fetch the data
       const { data, error } = await supabase!
         .from('employees')
         .select(`
@@ -67,10 +108,13 @@ const Employees: React.FC = () => {
         `)
         .order('created_at', { ascending: false });
       
+      console.log('Employees fetch response:', { data: data?.length || 0, error });
+      
       if (error) throw error;
       setEmployees(data || []);
     } catch (error: any) {
       console.error('Error fetching employees:', error);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -92,10 +136,13 @@ const Employees: React.FC = () => {
 
   const fetchBranches = async () => {
     try {
+      console.log('Fetching branches...');
       const { data, error } = await supabase!
         .from('branches')
         .select('id, name, location')
         .eq('is_active', true);
+      
+      console.log('Branches response:', { data: data?.length || 0, error });
       
       if (error) throw error;
       setBranches(data || []);
@@ -107,23 +154,50 @@ const Employees: React.FC = () => {
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('handleAddEmployee called');
+    console.log('Form data:', formData);
+    
+    // Validation
+    if (!formData.employee_id || !formData.full_name || !formData.phone || !formData.position || !formData.salary) {
+      console.log('Validation failed - missing required fields');
+      alertFunction('Please fill in all required fields');
+      return;
+    }
+    
     try {
+      console.log('Starting employee insertion...');
+      
+      const employeeData = {
+        employee_id: formData.employee_id,
+        full_name: formData.full_name,
+        phone: formData.phone,
+        position: formData.position,
+        branch_id: formData.branch_id || null,
+        salary: parseFloat(formData.salary),
+        salary_type: formData.salary_type,
+        status: formData.status,
+        hire_date: new Date().toISOString()
+      };
+      
+      console.log('Employee data to insert:', employeeData);
+      
       const { data, error } = await supabase!
         .from('employees')
-        .insert([{
-          employee_id: formData.employee_id,
-          full_name: formData.full_name,
-          phone: formData.phone,
-          position: formData.position,
-          branch_id: formData.branch_id || null,
-          salary: parseFloat(formData.salary),
-          salary_type: formData.salary_type,
-          status: formData.status,
-          hire_date: new Date().toISOString()
-        }]);
+        .insert([employeeData]);
 
-      if (error) throw error;
+      console.log('Insert response:', { data: !!data, error });
 
+      if (error) {
+        console.error('Insert error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+
+      console.log('Employee added successfully');
       alertFunction('Employee added successfully!');
       setShowAddModal(false);
       setFormData({
@@ -245,7 +319,10 @@ const Employees: React.FC = () => {
           <p className="text-gray-600">Manage company employees and departments</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            console.log('Add Employee button clicked');
+            setShowAddModal(true);
+          }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
         >
           Add Employee

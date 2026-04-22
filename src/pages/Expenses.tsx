@@ -69,6 +69,21 @@ const Expenses: React.FC = () => {
   const [unit, setUnit] = useState('');
   const [unitCost, setUnitCost] = useState('');
 
+  // Calculate total amount when unit cost or quantity changes
+  const calculateTotalAmount = () => {
+    const unitCostValue = parseFloat(unitCost) || 0;
+    const quantityValue = parseFloat(quantity) || 0;
+    const total = unitCostValue * quantityValue;
+    return total.toFixed(2);
+  };
+
+  // Update amount when unit cost or quantity changes
+  useEffect(() => {
+    if (unitCost && quantity) {
+      setAmount(calculateTotalAmount());
+    }
+  }, [unitCost, quantity]);
+
   const formatCurrency = (amount: number) => {
     return `ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -951,15 +966,14 @@ const Expenses: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Amount (ETB) *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit Cost (ETB)</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
-                      required
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      value={unitCost}
+                      onChange={(e) => setUnitCost(e.target.value)}
                       placeholder="0.00"
                     />
                   </div>
@@ -999,6 +1013,23 @@ const Expenses: React.FC = () => {
                       placeholder="e.g., kg, bags, liters"
                     />
                   </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount (ETB)</label>
+                    <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg">
+                      <span className="font-medium text-gray-900">
+                        {unitCost && quantity 
+                          ? `${parseFloat(unitCost) || 0} × ${parseFloat(quantity) || 0} = ${formatCurrency(parseFloat(calculateTotalAmount()))}`
+                          : 'Enter unit cost and quantity'
+                        }
+                      </span>
+                    </div>
+                    <input
+                      type="hidden"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -1024,10 +1055,11 @@ const Expenses: React.FC = () => {
                             </span>
                             <span className="font-medium">{expense.description}</span>
                             <span className="text-gray-600">
-                              {expense.quantity && expense.unit && (
-                                <span>{expense.quantity} {expense.unit} × </span>
+                              {expense.quantity && expense.unit ? (
+                                <span>{expense.quantity} {expense.unit} = {formatCurrency(parseFloat(expense.amount))}</span>
+                              ) : (
+                                <span className="font-medium">{formatCurrency(parseFloat(expense.amount))}</span>
                               )}
-                              <span className="font-medium">{formatCurrency(parseFloat(expense.amount))}</span>
                             </span>
                           </div>
                         </div>
