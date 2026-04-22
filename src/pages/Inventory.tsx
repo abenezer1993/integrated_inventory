@@ -845,6 +845,7 @@ const Inventory: React.FC = () => {
                       <div className="flex space-x-2">
                         <button
                           onClick={() => {
+                            console.log('Adjust stock button clicked for item:', item);
                             setSelectedItem(item);
                             setShowAdjustForm(true);
                           }}
@@ -856,7 +857,10 @@ const Inventory: React.FC = () => {
                           </svg>
                         </button>
                         <button
-                          onClick={() => handleDeleteInventory(item)}
+                          onClick={() => {
+                            console.log('Delete button clicked for item:', item);
+                            handleDeleteInventory(item);
+                          }}
                           className="text-red-600 hover:text-red-800 font-medium transition-colors"
                           title="Delete inventory record"
                         >
@@ -900,9 +904,9 @@ const Inventory: React.FC = () => {
             <form onSubmit={handleStockAdjustment} className="p-5 space-y-4">
               {selectedItem && (
                 <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="text-sm font-medium text-gray-900">{selectedItem.products.name}</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedItem.product_info?.name || selectedItem.product_name || 'Unknown Product'}</p>
                   <p className="text-xs text-gray-500">
-                    Current: {selectedItem.quantity} {selectedItem.products.unit} at {selectedItem.branches?.name}
+                    Current: {selectedItem.quantity} {selectedItem.product_info?.unit || 'units'} at {selectedItem.branches?.name || 'Unknown Branch'}
                   </p>
                 </div>
               )}

@@ -23,6 +23,7 @@ interface BranchAnalytics {
   totalProducts: number;
   totalSales: number;
   todaySales: number;
+  totalSalesAmount: number;
   lowStockItems: number;
   recentSales: number;
   topProducts: any[];
@@ -129,14 +130,40 @@ const Branches: React.FC = () => {
             });
             totalProducts = uniqueProducts.size;
           }
+
+          // Calculate sales metrics for this branch
+          const { data: salesData, error: salesError } = await supabase!
+            .from('sales')
+            .select('quantity_sold, total_amount, sale_date')
+            .eq('branch_id', branch.id);
+          
+          let totalSales = 0;
+          let totalSalesAmount = 0;
+          let todaySales = 0;
+          
+          if (!salesError && salesData) {
+            const today = new Date().toISOString().split('T')[0];
+            
+            salesData.forEach(sale => {
+              totalSales += sale.quantity_sold || 0;
+              totalSalesAmount += sale.total_amount || 0;
+              
+              // Check if sale is from today
+              const saleDate = new Date(sale.sale_date).toISOString().split('T')[0];
+              if (saleDate === today) {
+                todaySales += sale.quantity_sold || 0;
+              }
+            });
+          }
           
           analytics.push({
             branchId: branch.id,
             branchName: branch.name,
             totalInventory: totalInventory,
             totalProducts: totalProducts,
-            totalSales: 0,
-            todaySales: 0,
+            totalSales: totalSales,
+            todaySales: todaySales,
+            totalSalesAmount: totalSalesAmount,
             lowStockItems: 0,
             recentSales: 0,
             topProducts: []
@@ -151,6 +178,7 @@ const Branches: React.FC = () => {
             totalProducts: 0,
             totalSales: 0,
             todaySales: 0,
+            totalSalesAmount: 0,
             lowStockItems: 0,
             recentSales: 0,
             topProducts: []
@@ -482,15 +510,19 @@ const Branches: React.FC = () => {
                         <p className="text-lg font-bold text-blue-600">{analytics.totalProducts}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500">Total Sales</p>
-                        <p className="text-lg font-bold text-green-600">${analytics.totalSales.toFixed(2)}</p>
+                        <p className="text-xs text-gray-500">Total Sales (Units)</p>
+                        <p className="text-lg font-bold text-green-600">{analytics.totalSales.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Total Revenue</p>
+                        <p className="text-lg font-bold text-green-600">${analytics.totalSalesAmount.toFixed(2)}</p>
                       </div>
                     </div>
                     
                     <div className="space-y-3">
                       <div>
-                        <p className="text-xs text-gray-500">Today's Sales</p>
-                        <p className="text-lg font-bold text-purple-600">${analytics.todaySales.toFixed(2)}</p>
+                        <p className="text-xs text-gray-500">Today's Sales (Units)</p>
+                        <p className="text-lg font-bold text-purple-600">{analytics.todaySales.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Low Stock Items</p>

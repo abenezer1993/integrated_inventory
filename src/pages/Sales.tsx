@@ -14,6 +14,8 @@ interface Sale {
   quantity_sold: number;
   unit_price: number;
   total_amount: number;
+  cost_price: number;
+  profit: number;
   customer_name: string;
   sale_date: string;
   product_name: string;
@@ -60,7 +62,8 @@ const Sales: React.FC = () => {
   const [totalSales, setTotalSales] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const SALES_PER_PAGE = 10;
-  const [products, setProducts] = useState<any[]>([]);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -85,11 +88,68 @@ const Sales: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchSales();
-    fetchProducts();
-    fetchBranches();
-    fetchInventory();
+    // Load inventory first, then products (products depend on inventory)
+    const initializeData = async () => {
+      await fetchInventory();
+      await fetchProducts();
+      await fetchBranches();
+      fetchSales();
+    };
+    initializeData();
   }, []);
+
+  // Create optimized lookup maps for faster filtering
+  const createInventoryLookup = (inventory: any[], branchId: string) => {
+    const lookup = new Map();
+    
+    inventory.forEach((inv: any) => {
+      if (inv.branch_id === branchId) {
+        if (inv.product_id) {
+          lookup.set(inv.product_id, inv);
+        }
+        if (inv.manufactured_product_id) {
+          lookup.set(inv.manufactured_product_id, inv);
+        }
+      }
+    });
+    
+    return lookup;
+  };
+
+  // Filter products when branch changes
+  useEffect(() => {
+    if (inventory.length === 0 || allProducts.length === 0) {
+      console.log('Waiting for inventory and products to load...');
+      return;
+    }
+    
+    console.log('Filtering products for branch:', formData.branch_id);
+    console.log('All products count:', allProducts.length);
+    console.log('Inventory count:', inventory.length);
+    
+    // If no branch selected, show no products
+    if (!formData.branch_id || formData.branch_id === '') {
+      console.log('No branch selected, clearing filtered products');
+      setFilteredProducts([]);
+      return;
+    }
+    
+    // Create lookup map for this branch
+    const inventoryLookup = createInventoryLookup(inventory, formData.branch_id);
+    
+    const productsWithInventory = allProducts.filter((product) => {
+      const inventoryItem = inventoryLookup.get(product.id);
+      
+      if (!inventoryItem) {
+        return false;
+      }
+      
+      return inventoryItem.quantity > 0;
+    });
+    
+    console.log('Filtered products count:', productsWithInventory.length);
+    setFilteredProducts(productsWithInventory);
+  }, [formData.branch_id, inventory, allProducts]);
 
   const fetchSales = async (page: number = 1) => {
     try {
@@ -136,7 +196,7 @@ const Sales: React.FC = () => {
       console.log('Fetching purchased products...');
       const { data: purchasedProducts, error: purchasedError } = await supabase!
         .from('products')
-        .select('id, name, sku, unit, selling_price')
+        .select('id, name, sku, unit, selling_price, cost_price')
         .eq('is_active', true);
       
       if (purchasedError) throw purchasedError;
@@ -169,15 +229,15 @@ const Sales: React.FC = () => {
         console.error('RPC failed for manufactured products:', rpcError);
       }
       
-      // Combine both types with type information
+      // Set all products (no filtering here - useEffect will handle filtering)
       const allProducts = [
         ...(purchasedProducts || []).map((p: any) => ({ ...p, type: 'purchased' })),
         ...manufacturedProducts.map((p: any) => ({ ...p, type: 'manufactured' }))
       ];
       
-      console.log('All products for sales:', allProducts);
-      console.log('Total products count:', allProducts.length);
-      setProducts(allProducts);
+      console.log('All products loaded for sales:', allProducts);
+      console.log('Total products loaded count:', allProducts.length);
+      setAllProducts(allProducts);
     } catch (error) {
       console.error('Error fetching products:', error);
     }
@@ -300,7 +360,7 @@ const Sales: React.FC = () => {
 
       // Add single product to cart if not already there
       if (formData.product_id && cartItems.length === 0 && formData.quantity) {
-        const product = products.find((p: any) => p.id === formData.product_id);
+        const product = filteredProducts.find((p: any) => p.id === formData.product_id);
         if (!product) {
           alertFunction('Product not found');
           return;
@@ -343,29 +403,40 @@ const Sales: React.FC = () => {
       // Process each sale item
       for (const item of saleItems) {
         // Check if this is a manufactured product
-        const product = products.find(p => p.id === item.product_id);
+        const product = allProducts.find(p => p.id === item.product_id);
         const isManufactured = product?.type === 'manufactured';
         
+        // Get product cost price for profit calculation
+        const productCostPrice = product?.cost_price || 0;
+        const profit = (item.unit_price - productCostPrice) * item.quantity;
+
         // Create sale record with correct product reference
         const saleData: any = {
           branch_id: formData.branch_id,
           quantity_sold: item.quantity,
           unit_price: item.unit_price,
           total_amount: item.total_price,
+          cost_price: productCostPrice,
+          profit: profit,
           customer_name: formData.customer_name,
           created_by: user?.id
         };
-        
-        // Set the correct product field based on product type
-        if (isManufactured) {
-          saleData.manufactured_product_id = item.product_id;
-        } else {
+
+        if (product.type === 'purchased') {
           saleData.product_id = item.product_id;
+          saleData.manufactured_product_id = null;
+        } else {
+          saleData.product_id = null;
+          saleData.manufactured_product_id = item.product_id;
         }
         
+        console.log('🔍 Sale data being inserted:', saleData);
         const { error: saleError } = await supabase!.from('sales').insert(saleData);
 
-        if (saleError) throw saleError;
+        if (saleError) {
+          console.error('❌ Sale error details:', saleError);
+          throw saleError;
+        }
 
         // Update inventory - deduct quantity
         const currentStock = getAvailableStock(item.product_id, formData.branch_id);
@@ -444,7 +515,7 @@ const Sales: React.FC = () => {
       return;
     }
 
-    const product = products.find(p => p.id === formData.product_id);
+    const product = filteredProducts.find(p => p.id === formData.product_id);
     if (!product) {
       alertFunction('Product not found');
       return;
@@ -509,7 +580,7 @@ const Sales: React.FC = () => {
     
     // Add current product if not in cart
     if (formData.product_id && formData.quantity) {
-      const product = products.find(p => p.id === formData.product_id);
+      const product = filteredProducts.find(p => p.id === formData.product_id);
       if (product) {
         const quantity = parseInt(formData.quantity);
         const unitPrice = formData.unit_price ? parseFloat(formData.unit_price) : (product.selling_price || 0);
@@ -654,7 +725,9 @@ const Sales: React.FC = () => {
   };
 
   const getCurrentProduct = () => {
-    return products.find(p => p.id === formData.product_id);
+    const product = filteredProducts.find(p => p.id === formData.product_id);
+    console.log('🔍 Current product data:', product);
+    return product;
   };
 
   const calculateTotal = () => {
@@ -668,6 +741,22 @@ const Sales: React.FC = () => {
     const product = getCurrentProduct();
     const price = formData.unit_price || product?.selling_price || 0;
     return parseFloat(price.toString()) || 0;
+  };
+
+  const calculateProfit = () => {
+    const product = getCurrentProduct();
+    const quantity = parseInt(formData.quantity) || 0;
+    const unitPrice = formData.unit_price ? parseFloat(formData.unit_price) : (product?.selling_price || 0);
+    const costPrice = product?.cost_price || 0;
+    return (unitPrice - costPrice) * quantity;
+  };
+
+  const getProfitMargin = () => {
+    const product = getCurrentProduct();
+    const unitPrice = formData.unit_price ? parseFloat(formData.unit_price) : (product?.selling_price || 0);
+    const costPrice = product?.cost_price || 0;
+    if (costPrice === 0) return 0;
+    return ((unitPrice - costPrice) / costPrice) * 100;
   };
 
   if (loading) {
@@ -700,11 +789,7 @@ const Sales: React.FC = () => {
             🔄 Refresh
           </button>
           {(() => {
-            const canCreateSale = hasPermission('create_sales');
-            console.log('🔍 Debug - User role:', user?.role);
-            console.log('🔍 Debug - hasPermission(create_sales):', canCreateSale);
-            console.log('🔍 Debug - ROLE_PERMISSIONS for role:', ROLE_PERMISSIONS[user?.role as any]);
-            return canCreateSale;
+            return hasPermission('create_sales');
           })() && (
             <button
               onClick={() => setShowForm(!showForm)}
@@ -864,7 +949,7 @@ const Sales: React.FC = () => {
                     name="product_id"
                   >
                     <option value="">Select Product</option>
-                    {products.map((product) => (
+                    {filteredProducts.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.name} ({product.type === 'manufactured' ? 'Manufactured' : 'Purchased'}) - {product.sku}
                       </option>
@@ -900,6 +985,39 @@ const Sales: React.FC = () => {
                     name="unit_price"
                     placeholder={getCurrentProduct()?.selling_price?.toString() || '0.00 ETB'}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* Profit Calculation Display */}
+            {formData.product_id && formData.quantity && formData.unit_price && (
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-3">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Profit Calculation</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-500">Cost Price:</span>
+                    <span className="ml-2 font-medium">ETB {getCurrentProduct()?.cost_price?.toFixed(2) || '0.00'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Selling Price:</span>
+                    <span className="ml-2 font-medium">ETB {formData.unit_price}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Quantity:</span>
+                    <span className="ml-2 font-medium">{formData.quantity}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Profit/Unit:</span>
+                    <span className="ml-2 font-medium text-green-600">
+                      ETB {(parseFloat(formData.unit_price) - (getCurrentProduct()?.cost_price || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="col-span-2 border-t pt-1 mt-1">
+                    <span className="text-gray-500 font-semibold">Total Profit:</span>
+                    <span className="ml-2 font-bold text-green-600">
+                      ETB {((parseFloat(formData.unit_price) - (getCurrentProduct()?.cost_price || 0)) * parseInt(formData.quantity)).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}

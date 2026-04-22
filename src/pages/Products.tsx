@@ -26,6 +26,7 @@ const Products: React.FC = () => {
     category_id: '',
     description: '',
     unit: '',
+    cost_price: '',
     low_stock_threshold: '10'
   });
 
@@ -179,8 +180,7 @@ const Products: React.FC = () => {
           category_id: formData.category_id || null,
           description: formData.description,
           unit: formData.unit,
-          cost_price: 0, // Default to 0 since prices vary
-          selling_price: 0, // Default to 0 since prices vary
+          cost_price: parseFloat(formData.cost_price) || 0,
           low_stock_threshold: parseInt(formData.low_stock_threshold)
         })
         .select()
@@ -218,7 +218,8 @@ const Products: React.FC = () => {
       category_id: product.category_id || '',
       description: product.description || '',
       unit: product.unit,
-      low_stock_threshold: product.low_stock_threshold.toString()
+      cost_price: product.cost_price?.toString() || '',
+      low_stock_threshold: product.low_stock_threshold?.toString() || '10'
     });
     setShowAddForm(true);
   };
@@ -237,6 +238,7 @@ const Products: React.FC = () => {
           category_id: formData.category_id || null,
           description: formData.description,
           unit: formData.unit,
+          cost_price: parseFloat(formData.cost_price) || 0,
           low_stock_threshold: parseInt(formData.low_stock_threshold)
         })
         .eq('id', editingProduct.id)
@@ -362,6 +364,7 @@ const Products: React.FC = () => {
       category_id: '',
       description: '',
       unit: '',
+      cost_price: '',
       low_stock_threshold: '10'
     });
     setEditingProduct(null);
@@ -454,6 +457,9 @@ const Products: React.FC = () => {
                   Unit
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Cost Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Stock Alert
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -478,6 +484,9 @@ const Products: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {product.unit}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ETB {product.cost_price?.toFixed(2) || '0.00'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {product.low_stock_threshold}
@@ -712,6 +721,23 @@ const Products: React.FC = () => {
                       <option value="boxes">Boxes</option>
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Cost Price <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    name="cost_price"
+                    value={formData.cost_price}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
                 </div>
 
                 <div>
