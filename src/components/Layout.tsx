@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { alertFunction } from '../utils/alerts';
@@ -129,259 +129,259 @@ const Layout: React.FC = () => {
 
         <nav className="flex-1 overflow-y-auto px-3">
           {/* Dashboard - Common for all users */}
-          <a
-            href="/"
+          <Link
+            to="/app/"
             className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-              location.pathname === '/' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+              location.pathname === '/app/' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
             }`}
           >
             <span className="text-xl min-w-[24px] text-center">📊</span>
             {sidebarOpen && <span className="font-medium ml-3">Dashboard</span>}
-          </a>
+          </Link>
 
           {/* Role-based menu items */}
           {user?.role === 'admin' && (
             <>
-              <a
-                href="/products"
+              <Link
+                to="/app/products"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📦</span>
                 {sidebarOpen && <span className="font-medium ml-3">Products</span>}
-              </a>
-              <a
-                href="/inventory"
+              </Link>
+              <Link
+                to="/app/inventory"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/inventory' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/inventory' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📋</span>
                 {sidebarOpen && <span className="font-medium ml-3">Inventory</span>}
-              </a>
-              <a
-                href="/sales"
+              </Link>
+              <Link
+                to="/app/sales"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/sales' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/sales' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">💰</span>
                 {sidebarOpen && <span className="font-medium ml-3">Sales</span>}
-              </a>
-              <a
-                href="/purchases"
+              </Link>
+              <Link
+                to="/app/purchases"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/purchases' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/purchases' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">🛒</span>
                 {sidebarOpen && <span className="font-medium ml-3">Purchases</span>}
-              </a>
-              <a
-                href="/manufacturing"
+              </Link>
+              <Link
+                to="/app/manufacturing"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/manufacturing' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/manufacturing' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">🏭</span>
                 {sidebarOpen && <span className="font-medium ml-3">Manufacturing</span>}
-              </a>
-              <a
-                href="/branches"
+              </Link>
+              <Link
+                to="/app/branches"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/branches' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/branches' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">🏪</span>
                 {sidebarOpen && <span className="font-medium ml-3">Branches</span>}
-              </a>
-              <a
-                href="/user-management"
+              </Link>
+              <Link
+                to="/app/user-management"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/user-management' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/user-management' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F465;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Users</span>}
-              </a>
-              <a
-                href="/employees"
+              </Link>
+              <Link
+                to="/app/employees"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/employees' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/employees' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F475;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Employees</span>}
-              </a>
-              <a
-                href="/reports"
+              </Link>
+              <Link
+                to="/app/reports"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/reports' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/reports' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F4C8;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Reports</span>}
-              </a>
-              <a
-                href="/access-logs"
+              </Link>
+              <Link
+                to="/app/access-logs"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/access-logs' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/access-logs' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">🔍</span>
                 {sidebarOpen && <span className="font-medium ml-3">Access Logs</span>}
-              </a>
-              <a
-                href="/expenses"
+              </Link>
+              <Link
+                to="/app/expenses"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/expenses' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/expenses' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">💸</span>
                 {sidebarOpen && <span className="font-medium ml-3">Expenses</span>}
-              </a>
+              </Link>
             </>
           )}
 
           {user?.role === 'branch_manager' && (
             <>
-              <a
-                href="/products"
+              <Link
+                to="/app/products"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📦</span>
                 {sidebarOpen && <span className="font-medium ml-3">Products</span>}
-              </a>
-              <a
-                href="/inventory"
+              </Link>
+              <Link
+                to="/app/inventory"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/inventory' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/inventory' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📋</span>
                 {sidebarOpen && <span className="font-medium ml-3">Inventory</span>}
-              </a>
-              <a
-                href="/sales"
+              </Link>
+              <Link
+                to="/app/sales"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/sales' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/sales' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">💰</span>
                 {sidebarOpen && <span className="font-medium ml-3">Sales</span>}
-              </a>
-              <a
-                href="/customers"
+              </Link>
+              <Link
+                to="/app/customers"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/customers' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/customers' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F464;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Customers</span>}
-              </a>
-              <a
-                href="/employees"
+              </Link>
+              <Link
+                to="/app/employees"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/employees' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/employees' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F475;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Employees</span>}
-              </a>
-              <a
-                href="/branch-analytics"
+              </Link>
+              <Link
+                to="/app/branch-analytics"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/branch-analytics' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/branch-analytics' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F3E2;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Branch Analytics</span>}
-              </a>
-              <a
-                href="/expenses"
+              </Link>
+              <Link
+                to="/app/expenses"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/expenses' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/expenses' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">💸</span>
                 {sidebarOpen && <span className="font-medium ml-3">Expenses</span>}
-              </a>
+              </Link>
             </>
           )}
 
           {user?.role === 'sales_staff' && (
             <>
-              <a
-                href="/products"
+              <Link
+                to="/app/products"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📦</span>
                 {sidebarOpen && <span className="font-medium ml-3">Products</span>}
-              </a>
-              <a
-                href="/sales"
+              </Link>
+              <Link
+                to="/app/sales"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/sales' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/sales' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">💰</span>
                 {sidebarOpen && <span className="font-medium ml-3">Sales</span>}
-              </a>
-              <a
-                href="/customers"
+              </Link>
+              <Link
+                to="/app/customers"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/customers' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/customers' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">👤</span>
                 {sidebarOpen && <span className="font-medium ml-3">Customers</span>}
-              </a>
+              </Link>
             </>
           )}
 
           {user?.role === 'warehouse_staff' && (
             <>
-              <a
-                href="/products"
+              <Link
+                to="/app/products"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/products' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📦</span>
                 {sidebarOpen && <span className="font-medium ml-3">Products</span>}
-              </a>
-              <a
-                href="/inventory"
+              </Link>
+              <Link
+                to="/app/inventory"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/inventory' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/inventory' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">📋</span>
                 {sidebarOpen && <span className="font-medium ml-3">Inventory</span>}
-              </a>
-              <a
-                href="/purchases"
+              </Link>
+              <Link
+                to="/app/purchases"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/purchases' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/purchases' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">🛒</span>
                 {sidebarOpen && <span className="font-medium ml-3">Receive Stock</span>}
-              </a>
-              <a
-                href="/manufacturing"
+              </Link>
+              <Link
+                to="/app/manufacturing"
                 className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
-                  location.pathname === '/manufacturing' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                  location.pathname === '/app/manufacturing' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 <span className="text-xl min-w-[24px] text-center">🏭</span>
                 {sidebarOpen && <span className="font-medium ml-3">Manufacturing</span>}
-              </a>
+              </Link>
             </>
           )}
         </nav>
