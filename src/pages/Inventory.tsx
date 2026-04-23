@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { alertFunction } from '../utils/alerts';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
@@ -70,32 +70,52 @@ const Inventory: React.FC = () => {
   });
   const [filter, setFilter] = useState<'all' | 'manufactured' | 'purchased'>('all');
   const [productSearch, setProductSearch] = useState('');
-
-  // Filter inventory based on selected source
-  const filteredInventory = inventory.filter(item => {
-    if (filter === 'all') return true;
-    return item.source === filter;
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0
   });
+  const [totalInventory, setTotalInventory] = useState<InventoryItem[]>([]);
 
-  const manufacturedInventory = inventory.filter(item => item.source === 'manufactured');
-  const purchasedInventory = inventory.filter(item => item.source === 'purchased');
+  // Memoized filtering to prevent re-renders
+  const filteredInventory = useMemo(() => {
+    return inventory.filter(item => {
+      if (filter === 'all') return true;
+      return item.source === filter;
+    });
+  }, [inventory, filter]);
+
+  // Use total inventory for accurate filter counts
+  const manufacturedInventory = useMemo(() => {
+    return totalInventory.filter(item => item.source === 'manufactured');
+  }, [totalInventory]);
+
+  const purchasedInventory = useMemo(() => {
+    return totalInventory.filter(item => item.source === 'purchased');
+  }, [totalInventory]);
 
   // Filter products based on search
-  const filteredProducts = products.filter(product => {
+  const filteredProducts = useMemo(() => {
     if (!productSearch || productSearch.trim() === '') {
-      return true; // Show all products when search is empty
+      return products; // Show all products when search is empty
     }
-    return (
-      product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      product.sku?.toLowerCase().includes(productSearch.toLowerCase())
+    const searchLower = productSearch.toLowerCase();
+    return products.filter(product => 
+      product.name.toLowerCase().includes(searchLower) ||
+      product.sku?.toLowerCase().includes(searchLower)
     );
-  });
+  }, [products, productSearch]);
 
   useEffect(() => {
     fetchInventory();
     fetchBranches();
     fetchProducts();
   }, []);
+
+  useEffect(() => {
+    fetchInventory();
+  }, [pagination.page, pagination.limit]);
 
   const fetchBranches = async () => {
     try {
@@ -142,8 +162,24 @@ const Inventory: React.FC = () => {
     try {
       setLoading(true);
       
-      // Fetch inventory records - admins see all, regular users see only their branch
-      let query = supabase!
+      // First get total count
+      let countQuery = supabase!
+        .from('inventory')
+        .select('*', { count: 'exact', head: true });
+      
+      // Only filter by branch for non-admin users with valid branch_id
+      if (user?.role !== 'admin' && user?.branch_id) {
+        countQuery = countQuery.eq('branch_id', user.branch_id);
+      }
+      
+      const { count: totalCount, error: countError } = await countQuery;
+      if (countError) {
+        console.error('Count error:', countError);
+        throw countError;
+      }
+      
+      // Fetch ALL inventory for filter counts (no pagination)
+      let allInventoryQuery = supabase!
         .from('inventory')
         .select(`
           *,
@@ -155,156 +191,60 @@ const Inventory: React.FC = () => {
       
       // Only filter by branch for non-admin users with valid branch_id
       if (user?.role !== 'admin' && user?.branch_id) {
-        query = query.eq('branch_id', user.branch_id);
+        allInventoryQuery = allInventoryQuery.eq('branch_id', user.branch_id);
+      }
+
+      // Fetch paginated inventory records with all related data in ONE query
+      let paginatedQuery = supabase!
+        .from('inventory')
+        .select(`
+          *,
+          branches (id, name, location),
+          products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold),
+          manufactured_products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold)
+        `)
+        .order('last_updated', { ascending: false })
+        .range((pagination.page - 1) * pagination.limit, pagination.page * pagination.limit - 1);
+      
+      // Only filter by branch for non-admin users with valid branch_id
+      if (user?.role !== 'admin' && user?.branch_id) {
+        paginatedQuery = paginatedQuery.eq('branch_id', user.branch_id);
       }
       
-      const { data: inventoryData, error: inventoryError } = await query;
+      // Fetch both all inventory and paginated inventory in parallel
+      const [
+        { data: allInventoryData, error: allInventoryError },
+        { data: inventoryData, error: inventoryError }
+      ] = await Promise.all([allInventoryQuery, paginatedQuery]);
 
-      if (inventoryError) {
-        console.error('Fetch error:', inventoryError);
-        throw inventoryError;
+      if (allInventoryError || inventoryError) {
+        console.error('Fetch error:', allInventoryError || inventoryError);
+        throw allInventoryError || inventoryError;
       }
 
-      console.log('=== INVENTORY FETCH DEBUG ===');
-      console.log('User role:', user?.role);
-      console.log('User branch_id:', user?.branch_id);
-      console.log('Raw inventory data:', inventoryData);
-      console.log('Inventory data length:', inventoryData?.length);
-      console.log('Inventory items with product_id:', inventoryData?.filter(item => item.product_id));
-      console.log('Inventory items with manufactured_product_id:', inventoryData?.filter(item => item.manufactured_product_id));
+      // Update pagination state
+      setPagination(prev => ({
+        ...prev,
+        total: totalCount || 0,
+        totalPages: Math.ceil((totalCount || 0) / pagination.limit)
+      }));
 
-      // Fetch all manufactured products at once to avoid RLS issues
-      let allManufacturedProducts: any[] = [];
-      try {
-        console.log('Fetching manufactured products...');
-        const { data: mfgProducts, error: directError } = await supabase!
-          .from('manufactured_products')
-          .select('id, name, sku, unit, cost_price, selling_price, low_stock_threshold');
-        
-        if (directError) {
-          console.log('Direct fetch error:', directError);
-          throw directError;
-        }
-        
-        allManufacturedProducts = mfgProducts || [];
-        console.log('Direct fetch manufactured products:', allManufacturedProducts);
-        
-        // If direct fetch returns empty, try RPC as fallback
-        if (allManufacturedProducts.length === 0) {
-          console.log('Direct fetch returned empty, trying RPC...');
-          try {
-            const { data: rpcProducts, error: rpcError } = await supabase!.rpc('get_all_manufactured_products_for_dropdown');
-            if (rpcError) {
-              console.log('RPC error:', rpcError);
-            } else {
-              allManufacturedProducts = rpcProducts || [];
-              console.log('RPC manufactured products:', allManufacturedProducts);
-            }
-          } catch (rpcError) {
-            console.log('RPC also failed:', rpcError);
-          }
-        }
-      } catch (mfgError) {
-        console.log('Could not fetch manufactured products directly, trying RPC:', mfgError);
-        // Try RPC as fallback
-        try {
-          const { data: rpcProducts, error: rpcError } = await supabase!.rpc('get_all_manufactured_products_for_dropdown');
-          if (rpcError) {
-            console.log('RPC error:', rpcError);
-          } else {
-            allManufacturedProducts = rpcProducts || [];
-            console.log('RPC manufactured products:', allManufacturedProducts);
-          }
-        } catch (rpcError) {
-          console.log('RPC also failed:', rpcError);
-        }
-      }
-
-      // Fetch manufacturing orders to get order numbers for manufactured products
-      let manufacturingOrders: any[] = [];
-      try {
-        console.log('Fetching manufacturing orders...');
-        const { data: orders } = await supabase!
-          .from('manufacturing_orders')
-          .select('id, order_number, product_name');
-        manufacturingOrders = orders || [];
-        console.log('Manufacturing orders:', manufacturingOrders);
-      } catch (orderError) {
-        console.log('Could not fetch manufacturing orders:', orderError);
-      }
-
-      // Wait for all data to be available before processing
-      console.log('Starting inventory processing with:');
-      console.log('- Manufactured products count:', allManufacturedProducts.length);
-      console.log('- Manufacturing orders count:', manufacturingOrders.length);
-
-      // Then fetch product details for each inventory item
-      const enrichedInventory = await Promise.all((inventoryData || []).map(async (item) => {
-        console.log('Processing inventory item:', item);
-        
+      // Process ALL inventory data for filter counts
+      const enrichedTotalInventory = (allInventoryData || []).map((item) => {
         let productInfo = null;
         let source = 'purchased';
         let displaySku = null;
         
         if (item.manufactured_product_id) {
-          console.log('Found manufactured_product_id:', item.manufactured_product_id);
-          console.log('Available manufactured products in cache:', allManufacturedProducts.map(p => ({ id: p.id, name: p.name })));
-          
-          // Find the product in our cached list
-          const mfgProduct = allManufacturedProducts.find((p: any) => p.id === item.manufactured_product_id);
-          
-          console.log('Manufactured product data (cache):', mfgProduct);
-          console.log('Looking for ID:', item.manufactured_product_id, 'in cache of length:', allManufacturedProducts.length);
-          
-          if (mfgProduct) {
-            productInfo = mfgProduct;
-            source = 'manufactured';
-            
-            // Find the manufacturing order to get the order number as SKU
-            console.log('Looking for manufacturing order for product:', mfgProduct.name);
-            console.log('Available manufacturing orders:', manufacturingOrders.map(o => ({ name: o.product_name, order_number: o.order_number })));
-            
-            const manufacturingOrder = manufacturingOrders.find(order => order.product_name === mfgProduct.name);
-            console.log('Found manufacturing order:', manufacturingOrder);
-            
-            if (manufacturingOrder) {
-              displaySku = manufacturingOrder.order_number;
-              console.log('Using order number as SKU:', displaySku);
-            } else {
-              displaySku = mfgProduct.sku || 'N/A';
-              console.log('No order found, using product SKU:', displaySku);
-            }
-            
-            console.log('Set source to manufactured, SKU:', displaySku);
-          } else {
-            // Even if we can't find the product details, if it has manufactured_product_id, it's manufactured
-            source = 'manufactured';
-            productInfo = { name: 'Unknown Manufactured Product' };
-            displaySku = 'N/A';
-            console.log('Product not found in cache but has manufactured_product_id, setting source to manufactured');
-          }
+          productInfo = item.manufactured_products;
+          source = 'manufactured';
+          displaySku = productInfo?.sku || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
         } else if (item.product_id) {
-          console.log('Found product_id:', item.product_id);
-          // Fetch purchased product details
-          const { data: prodData } = await supabase!
-            .from('products')
-            .select('id, name, sku, unit, cost_price, selling_price, low_stock_threshold')
-            .eq('id', item.product_id)
-            .single();
-          
-          console.log('Purchased product data:', prodData);
-          
-          if (prodData) {
-            productInfo = prodData;
-            source = 'purchased';
-            displaySku = prodData.sku;
-            console.log('Set source to purchased');
-          }
-        } else {
-          console.log('No product_id or manufactured_product_id found');
+          productInfo = item.products;
+          source = 'purchased';
+          displaySku = productInfo?.sku || 'N/A';
         }
         
-        console.log(`Final Product: ${productInfo?.name}, Source: ${source}, SKU: ${displaySku}`);
         return {
           ...item,
           source: source,
@@ -312,13 +252,37 @@ const Inventory: React.FC = () => {
           display_sku: displaySku || 'N/A',
           product_info: productInfo
         };
-      }));
+      });
 
-      console.log('Enriched inventory:', enrichedInventory);
-      console.log('Final inventory length:', enrichedInventory.length);
-      console.log('Setting inventory state...');
+      // Process paginated inventory data efficiently - NO async operations in map!
+      const enrichedInventory = (inventoryData || []).map((item) => {
+        let productInfo = null;
+        let source = 'purchased';
+        let displaySku = null;
+        
+        if (item.manufactured_product_id) {
+          // Use the already fetched manufactured_products data
+          productInfo = item.manufactured_products;
+          source = 'manufactured';
+          displaySku = productInfo?.sku || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+        } else if (item.product_id) {
+          // Use the already fetched products data
+          productInfo = item.products;
+          source = 'purchased';
+          displaySku = productInfo?.sku || 'N/A';
+        }
+        
+        return {
+          ...item,
+          source: source,
+          product_name: productInfo?.name || 'Unknown',
+          display_sku: displaySku || 'N/A',
+          product_info: productInfo
+        };
+      });
 
       setInventory(enrichedInventory);
+      setTotalInventory(enrichedTotalInventory);
     } catch (error) {
       console.error('Error fetching inventory:', error);
     } finally {
@@ -677,7 +641,7 @@ const Inventory: React.FC = () => {
             </div>
             <div className="ml-2 min-w-0 flex-1">
               <p className="text-xs font-medium text-gray-600 truncate">Total Items</p>
-              <p className="text-lg font-bold text-blue-600">{inventory.length}</p>
+              <p className="text-lg font-bold text-blue-600">{manufacturedInventory.length + purchasedInventory.length}</p>
             </div>
           </div>
         </div>
@@ -714,7 +678,7 @@ const Inventory: React.FC = () => {
             <div className="ml-2 min-w-0 flex-1">
               <p className="text-xs font-medium text-gray-600 truncate">Low Stock</p>
               <p className="text-lg font-bold text-yellow-600">
-                {inventory.filter(item => item.quantity > 0 && item.quantity <= (item.products?.low_stock_threshold || 0)).length}
+                {totalInventory.filter(item => item.quantity > 0 && item.quantity <= (item.products?.low_stock_threshold || 0)).length}
               </p>
             </div>
           </div>
@@ -728,7 +692,7 @@ const Inventory: React.FC = () => {
             <div className="ml-2 min-w-0 flex-1">
               <p className="text-xs font-medium text-gray-600 truncate">Out of Stock</p>
               <p className="text-lg font-bold text-red-600">
-                {inventory.filter(item => item.quantity <= 0).length}
+                {totalInventory.filter(item => item.quantity <= 0).length}
               </p>
             </div>
           </div>
@@ -743,13 +707,10 @@ const Inventory: React.FC = () => {
               <p className="text-xs font-medium text-gray-600 truncate">Total Stock Value</p>
               <p className="text-lg font-bold text-indigo-600">
                 ETB {(() => {
-                  console.log('🔍 Debug - Inventory items:', inventory.slice(0, 3));
-                  const total = inventory.reduce((total, item) => {
+                  const total = totalInventory.reduce((total, item) => {
                     const costPrice = item.products?.cost_price || item.manufactured_products?.cost_price || 0;
-                    console.log('🔍 Item:', item.product_name, 'Cost Price:', costPrice, 'Quantity:', item.quantity);
                     return total + (costPrice * item.quantity);
                   }, 0);
-                  console.log('🔍 Total Stock Value:', total);
                   return total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
                 })()}
               </p>
@@ -772,7 +733,7 @@ const Inventory: React.FC = () => {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                All ({inventory.length})
+                All ({totalInventory.length})
               </button>
               <button
                 onClick={() => setFilter('manufactured')}
@@ -801,28 +762,28 @@ const Inventory: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Product
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Source
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   SKU
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Location
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Quantity
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Last Updated
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -832,42 +793,42 @@ const Inventory: React.FC = () => {
                 const status = getStockStatus(item);
                 return (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="text-xs font-medium text-gray-900">
                         {item.product_info?.name || item.product_name || 'Unknown'}
                       </div>
                       <div className="text-xs text-gray-500">Min: {item.product_info?.low_stock_threshold || 0} {item.product_info?.unit || 'units'}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <span className={`px-1 inline-flex text-xs leading-4 font-semibold rounded-full ${
                         item.source === 'manufactured' 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-purple-100 text-purple-800'
                       }`}>
-                        {item.source === 'manufactured' ? 'Manufactured' : 'Purchased'}
+                        {item.source === 'manufactured' ? 'MFG' : 'PUR'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-900">
                       {item.display_sku || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-900">
                       {item.branches?.name || 'Main Branch'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="text-xs font-medium text-gray-900">
                         {item.quantity} {item.products?.unit || 'units'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status.color}`}>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <span className={`px-1 inline-flex text-xs leading-4 font-semibold rounded-full ${status.color}`}>
                         {status.text}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
                       {new Date(item.last_updated).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div className="flex space-x-2">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-900">
+                      <div className="flex space-x-1">
                         <button
                           onClick={() => {
                             console.log('Adjust stock button clicked for item:', item);
@@ -900,6 +861,51 @@ const Inventory: React.FC = () => {
               })}
             </tbody>
           </table>
+        </div>
+        
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
+          <div className="flex items-center text-sm text-gray-700">
+            <span className="text-xs">
+              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} results
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+              disabled={pagination.page === 1}
+              className="px-2 py-1 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            <div className="flex space-x-1">
+              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                const pageNumber = i + 1;
+                return (
+                  <button
+                    key={pageNumber}
+                    onClick={() => setPagination(prev => ({ ...prev, page: pageNumber }))}
+                    className={`px-2 py-1 text-xs font-medium rounded ${
+                      pagination.page === pageNumber
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
+              disabled={pagination.page === pagination.totalPages}
+              className="px-2 py-1 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 

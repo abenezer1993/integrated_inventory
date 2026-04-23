@@ -151,11 +151,16 @@ const Expenses: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchExpenses();
-    fetchGypsumData();
-    fetchWoodData();
-    fetchManufacturingOrders();
-    setLoading(false);
+    const initializeData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchExpenses(),
+        fetchManufacturingOrders(),
+        fetchOptimizedCategoryData()
+      ]);
+      setLoading(false);
+    };
+    initializeData();
   }, []);
 
   const fetchManufacturingOrders = async () => {
@@ -191,101 +196,69 @@ const Expenses: React.FC = () => {
     }
   };
 
-  const fetchGypsumData = async () => {
+  const fetchOptimizedCategoryData = async () => {
     try {
-      const { data: orders } = await supabase!
-        .from('manufacturing_orders')
-        .select('*')
-        .eq('product_category', 'gypsum')
-        .order('created_at', { ascending: false });
+      // Fetch ALL orders and expenses at once - NO redundant queries!
+      const [
+        { data: allOrders },
+        { data: allExpenses }
+      ] = await Promise.all([
+        supabase!
+          .from('manufacturing_orders')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase!
+          .from('manufacturing_expenses')
+          .select('manufacturing_order_id, expense_type, amount')
+      ]);
 
-      const { data: expenses } = await supabase!
-        .from('manufacturing_expenses')
-        .select('expense_type, amount')
-        .in('manufacturing_order_id', 
-          orders?.map(order => order.id) || []
-        );
+      // Helper function to calculate category data
+      const calculateCategoryData = (category: 'gypsum' | 'wood') => {
+        const orders = allOrders?.filter(order => order.product_category === category) || [];
+        const orderIds = orders.map(order => order.id);
+        
+        const expenses = allExpenses?.filter(expense => 
+          orderIds.includes(expense.manufacturing_order_id)
+        ) || [];
 
-      const expensesByType = expenses?.reduce((acc, expense) => {
-        acc[expense.expense_type] = (acc[expense.expense_type] || 0) + expense.amount;
-        return acc;
-      }, {} as Record<string, number>) || {};
+        // Calculate expenses by type
+        const expensesByType = expenses.reduce((acc, expense) => {
+          acc[expense.expense_type] = (acc[expense.expense_type] || 0) + expense.amount;
+          return acc;
+        }, {} as Record<string, number>);
 
-      const totalExpenses = expenses?.reduce((sum, expense) => sum + expense.amount, 0) || 0;
-      const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_revenue || 0), 0) || 0;
-      const profitMargin = totalRevenue - totalExpenses;
-      const profitPercentage = totalRevenue > 0 ? (profitMargin / totalRevenue) * 100 : 0;
+        const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+        const totalRevenue = orders.reduce((sum, order) => sum + (order.total_revenue || 0), 0);
+        const profitMargin = totalRevenue - totalExpenses;
+        const profitPercentage = totalRevenue > 0 ? (profitMargin / totalRevenue) * 100 : 0;
 
-      setGypsumData({
-        totalExpenses,
-        totalRevenue,
-        profitMargin,
-        profitPercentage,
-        orderCount: orders?.length || 0,
-        expensesByType,
-        orders: orders?.map(order => ({
-          id: order.id,
-          order_number: order.order_number,
-          product_name: order.product_name,
-          quantity_produced: order.quantity_produced,
-          total_revenue: order.total_revenue,
-          total_expenses: order.total_expenses,
-          profit_margin: order.profit_margin,
-          profit_percentage: order.profit_percentage,
-          created_at: order.created_at
-        })) || []
-      });
+        return {
+          totalExpenses,
+          totalRevenue,
+          profitMargin,
+          profitPercentage,
+          orderCount: orders.length,
+          expensesByType,
+          orders: orders.map(order => ({
+            id: order.id,
+            order_number: order.order_number,
+            product_name: order.product_name,
+            quantity_produced: order.quantity_produced,
+            total_revenue: order.total_revenue,
+            total_expenses: order.total_expenses,
+            profit_margin: order.profit_margin,
+            profit_percentage: order.profit_percentage,
+            created_at: order.created_at
+          }))
+        };
+      };
+
+      // Set both categories data at once
+      setGypsumData(calculateCategoryData('gypsum'));
+      setWoodData(calculateCategoryData('wood'));
+      
     } catch (error) {
-      console.error('Error fetching gypsum data:', error);
-    }
-  };
-
-  const fetchWoodData = async () => {
-    try {
-      const { data: orders } = await supabase!
-        .from('manufacturing_orders')
-        .select('*')
-        .eq('product_category', 'wood')
-        .order('created_at', { ascending: false });
-
-      const { data: expenses } = await supabase!
-        .from('manufacturing_expenses')
-        .select('expense_type, amount')
-        .in('manufacturing_order_id', 
-          orders?.map(order => order.id) || []
-        );
-
-      const expensesByType = expenses?.reduce((acc, expense) => {
-        acc[expense.expense_type] = (acc[expense.expense_type] || 0) + expense.amount;
-        return acc;
-      }, {} as Record<string, number>) || {};
-
-      const totalExpenses = expenses?.reduce((sum, expense) => sum + expense.amount, 0) || 0;
-      const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_revenue || 0), 0) || 0;
-      const profitMargin = totalRevenue - totalExpenses;
-      const profitPercentage = totalRevenue > 0 ? (profitMargin / totalRevenue) * 100 : 0;
-
-      setWoodData({
-        totalExpenses,
-        totalRevenue,
-        profitMargin,
-        profitPercentage,
-        orderCount: orders?.length || 0,
-        expensesByType,
-        orders: orders?.map(order => ({
-          id: order.id,
-          order_number: order.order_number,
-          product_name: order.product_name,
-          quantity_produced: order.quantity_produced,
-          total_revenue: order.total_revenue,
-          total_expenses: order.total_expenses,
-          profit_margin: order.profit_margin,
-          profit_percentage: order.profit_percentage,
-          created_at: order.created_at
-        })) || []
-      });
-    } catch (error) {
-      console.error('Error fetching wood data:', error);
+      console.error('Error fetching category data:', error);
     }
   };
 

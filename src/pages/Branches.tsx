@@ -89,14 +89,11 @@ const Branches: React.FC = () => {
   const fetchBranchAnalytics = async () => {
     try {
       setAnalyticsLoading(true);
-      console.log('Fetching branch analytics...');
       
-      // Get all branches first
       const { data: branchesData, error: branchError } = await supabase!
         .from('branches')
         .select('id, name')
-        .eq('is_active', true)
-        .limit(50); // Add limit to prevent performance issues
+        .eq('is_active', true);
       
       if (branchError) {
         console.error('Branch fetch error:', branchError);
@@ -109,95 +106,74 @@ const Branches: React.FC = () => {
         return;
       }
       
-      const analytics: BranchAnalytics[] = [];
+      const branchIds = branchesData.map(b => b.id);
+      const today = new Date().toISOString().split('T')[0];
       
-      // Get analytics for each branch
-      for (const branch of branchesData) {
-        try {
-          // Calculate actual inventory count for this branch
-          const { data: inventoryData, error: inventoryError } = await supabase!
-            .from('inventory')
-            .select('quantity')
-            .eq('branch_id', branch.id);
+      // Fetch all data at once - NO N+1 queries!
+      const [
+        { data: allInventory, error: inventoryError },
+        { data: allSales, error: salesError }
+      ] = await Promise.all([
+        supabase!
+          .from('inventory')
+          .select('branch_id, quantity, product_id, manufactured_product_id')
+          .in('branch_id', branchIds),
+        supabase!
+          .from('sales')
+          .select('branch_id, quantity_sold, total_amount, sale_date')
+          .in('branch_id', branchIds)
+      ]);
+      
+      // Process data efficiently - NO database calls in loop!
+      const analytics: BranchAnalytics[] = branchesData.map(branch => {
+        // Filter inventory for this branch
+        const branchInventory = (allInventory || []).filter(item => item.branch_id === branch.id);
+        
+        // Calculate inventory metrics
+        const totalInventory = branchInventory.reduce((sum, item) => sum + (item.quantity || 0), 0);
+        
+        // Count unique products
+        const uniqueProducts = new Set();
+        branchInventory.forEach(item => {
+          if (item.product_id) uniqueProducts.add(item.product_id);
+          if (item.manufactured_product_id) uniqueProducts.add(item.manufactured_product_id);
+        });
+        const totalProducts = uniqueProducts.size;
+        
+        // Filter sales for this branch
+        const branchSales = (allSales || []).filter(sale => sale.branch_id === branch.id);
+        
+        // Calculate sales metrics
+        let totalSales = 0;
+        let totalSalesAmount = 0;
+        let todaySales = 0;
+        
+        branchSales.forEach(sale => {
+          totalSales += sale.quantity_sold || 0;
+          totalSalesAmount += sale.total_amount || 0;
           
-          let totalInventory = 0;
-          if (!inventoryError && inventoryData) {
-            totalInventory = inventoryData.reduce((sum, item) => sum + (item.quantity || 0), 0);
+          // Check if sale is from today
+          const saleDate = new Date(sale.sale_date).toISOString().split('T')[0];
+          if (saleDate === today) {
+            todaySales += sale.quantity_sold || 0;
           }
-          
-          // Count unique products in this branch
-          const { data: productCount, error: productError } = await supabase!
-            .from('inventory')
-            .select('product_id, manufactured_product_id')
-            .eq('branch_id', branch.id);
-          
-          let totalProducts = 0;
-          if (!productError && productCount) {
-            const uniqueProducts = new Set();
-            productCount.forEach(item => {
-              if (item.product_id) uniqueProducts.add(item.product_id);
-              if (item.manufactured_product_id) uniqueProducts.add(item.manufactured_product_id);
-            });
-            totalProducts = uniqueProducts.size;
-          }
-
-          // Calculate sales metrics for this branch
-          const { data: salesData, error: salesError } = await supabase!
-            .from('sales')
-            .select('quantity_sold, total_amount, sale_date')
-            .eq('branch_id', branch.id);
-          
-          let totalSales = 0;
-          let totalSalesAmount = 0;
-          let todaySales = 0;
-          
-          if (!salesError && salesData) {
-            const today = new Date().toISOString().split('T')[0];
-            
-            salesData.forEach(sale => {
-              totalSales += sale.quantity_sold || 0;
-              totalSalesAmount += sale.total_amount || 0;
-              
-              // Check if sale is from today
-              const saleDate = new Date(sale.sale_date).toISOString().split('T')[0];
-              if (saleDate === today) {
-                todaySales += sale.quantity_sold || 0;
-              }
-            });
-          }
-          
-          analytics.push({
-            branchId: branch.id,
-            branchName: branch.name,
-            totalInventory: totalInventory,
-            totalProducts: totalProducts,
-            totalSales: totalSales,
-            todaySales: todaySales,
-            totalSalesAmount: totalSalesAmount,
-            lowStockItems: 0,
-            recentSales: 0,
-            topProducts: []
-          });
-        } catch (error) {
-          console.error(`Error fetching analytics for branch ${branch.name}:`, error);
-          // Add default analytics for this branch
-          analytics.push({
-            branchId: branch.id,
-            branchName: branch.name,
-            totalInventory: 0,
-            totalProducts: 0,
-            totalSales: 0,
-            todaySales: 0,
-            totalSalesAmount: 0,
-            lowStockItems: 0,
-            recentSales: 0,
-            topProducts: []
-          });
-        }
-      }
+        });
+        
+        return {
+          branchId: branch.id,
+          branchName: branch.name,
+          totalInventory,
+          totalProducts,
+          totalSales,
+          todaySales,
+          totalSalesAmount,
+          lowStockItems: 0,
+          recentSales: 0,
+          topProducts: []
+        };
+      });
       
       setBranchAnalytics(analytics);
-      console.log('Branch analytics fetched:', analytics);
     } catch (error) {
       console.error('Error fetching branch analytics:', error);
       setBranchAnalytics([]);
