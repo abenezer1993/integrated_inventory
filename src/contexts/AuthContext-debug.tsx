@@ -135,6 +135,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       console.log('✅ Login successful');
       
+      // Redirect to app after successful login
+      window.location.href = '/app';
+      
       // Get user profile to determine role
       if (data.session && data.user) {
         try {
@@ -192,6 +195,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔐 Logging out...');
       await supabase!.auth.signOut();
       console.log('✅ Logout successful');
+      // Redirect to landing page after logout
+      window.location.href = '/';
     } catch (error) {
       console.error('❌ Logout error:', error);
     }

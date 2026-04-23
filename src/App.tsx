@@ -19,6 +19,7 @@ import Expenses from './pages/Expenses';
 import Employees from './pages/Employees';
 import AccessLogs from './pages/AccessLogs';
 import Login from './pages/Login';
+import Landing from './pages/Landing';
 
 function App() {
   return (
@@ -27,8 +28,10 @@ function App() {
         <AuthProvider>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/landing" element={<Landing />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/" element={<Layout />}>
+              <Route path="/app" element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="products" element={<Products />} />
                 <Route path="sales" element={<Sales />} />
