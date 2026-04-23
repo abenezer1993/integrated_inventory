@@ -1,17 +1,89 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useSupabase } from '../contexts/SupabaseContext';
+import { alertFunction } from '../utils/alerts';
+import { useAccessLogService } from '../services/accessLogService';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
+  const { supabase } = useSupabase();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
+
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      // Update user profile in database
+      const { error: profileError } = await supabase!
+        .from('users')
+        .update({ name: profileForm.name })
+        .eq('id', user?.id);
+      
+      if (profileError) throw profileError;
+      
+      // Update email if changed
+      if (profileForm.email !== user?.email) {
+        const { error: emailError } = await supabase!.auth.updateUser({
+          email: profileForm.email
+        });
+        
+        if (emailError) throw emailError;
+      }
+      
+      // Change password if new password provided
+      if (profileForm.newPassword) {
+        if (profileForm.newPassword !== profileForm.confirmPassword) {
+          alertFunction('New passwords do not match');
+          return;
+        }
+        
+        const { error: passwordError } = await supabase!.auth.updateUser({
+          password: profileForm.newPassword
+        });
+        
+        if (passwordError) throw passwordError;
+      }
+      
+      // Log profile update
+      if (accessLogService) {
+        accessLogService.logProfileUpdate();
+      }
+      
+      alertFunction('Profile updated successfully!');
+      setShowProfileModal(false);
+      
+      // Reset form
+      setProfileForm({
+        name: profileForm.name,
+        email: profileForm.email,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+      
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      alertFunction('Error updating profile: ' + error.message);
+    }
+  };
+
+  const accessLogService = useAccessLogService();
 
   const getRoleBadge = () => {
     if (!user) return { color: 'bg-gray-600', text: 'Guest' };
@@ -150,6 +222,15 @@ const Layout: React.FC = () => {
               >
                 <span className="text-xl min-w-[24px] text-center">&#x1F4C8;</span>
                 {sidebarOpen && <span className="font-medium ml-3">Reports</span>}
+              </a>
+              <a
+                href="/access-logs"
+                className={`flex items-center px-3 py-2 mb-1 rounded-lg transition-all duration-200 ${
+                  location.pathname === '/access-logs' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <span className="text-xl min-w-[24px] text-center">🔍</span>
+                {sidebarOpen && <span className="font-medium ml-3">Access Logs</span>}
               </a>
               <a
                 href="/expenses"
@@ -307,7 +388,10 @@ const Layout: React.FC = () => {
 
         {/* User Profile Section - Fixed at bottom */}
         <div className="p-4 border-t border-slate-700 flex-shrink-0">
-          <div className={`flex items-center ${!sidebarOpen && 'justify-center'}`}>
+          <div 
+            className={`flex items-center ${!sidebarOpen && 'justify-center'} cursor-pointer hover:bg-slate-700 rounded-lg p-2 transition-colors`}
+            onClick={() => setShowProfileModal(true)}
+          >
             <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
               {user?.name?.charAt(0).toUpperCase()}
             </div>
@@ -321,7 +405,10 @@ const Layout: React.FC = () => {
                     {roleBadge.text}
                   </span>
                   <button
-                    onClick={handleLogout}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLogout();
+                    }}
                     className="text-xs text-gray-400 hover:text-white transition-colors"
                   >
                     Sign out
@@ -379,6 +466,90 @@ const Layout: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold mb-4">Edit Profile</h3>
+            <form onSubmit={handleProfileUpdate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({...profileForm, name: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({...profileForm, email: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Change Password</h4>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      New Password (optional)
+                    </label>
+                    <input
+                      type="password"
+                      value={profileForm.newPassword}
+                      onChange={(e) => setProfileForm({...profileForm, newPassword: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Leave blank to keep current password"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={profileForm.confirmPassword}
+                      onChange={(e) => setProfileForm({...profileForm, confirmPassword: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Confirm new password"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                >
+                  Update Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

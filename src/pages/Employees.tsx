@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { alertFunction } from '../utils/alerts';
-import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
+import { useSupabase } from '../contexts/SupabaseContext';
+import { alertFunction } from '../utils/alerts';
+import { useAccessLogService } from '../services/accessLogService';
 import { useConfirmation } from '../utils/confirmations';
 
 interface Employee {
@@ -30,6 +31,7 @@ const Employees: React.FC = () => {
   const { supabase } = useSupabase();
   const { user, hasPermission } = useAuth();
   const { showConfirmation } = useConfirmation();
+  const accessLogService = useAccessLogService();
   
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -196,6 +198,12 @@ const Employees: React.FC = () => {
       }
 
       console.log('Employee added successfully');
+      
+      // Log employee creation
+      if (accessLogService && data?.[0]) {
+        accessLogService.logEmployeeCreate(data[0].id, formData.full_name);
+      }
+      
       alertFunction('Employee added successfully!');
       setShowAddModal(false);
       setFormData({

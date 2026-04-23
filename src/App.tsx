@@ -17,6 +17,7 @@ import Reports from './pages/Reports';
 import BranchAnalytics from './pages/BranchAnalytics';
 import Expenses from './pages/Expenses';
 import Employees from './pages/Employees';
+import AccessLogs from './pages/AccessLogs';
 import Login from './pages/Login';
 
 function App() {
@@ -47,6 +48,7 @@ function App() {
                 {/* Admin Only Routes */}
                 <Route path="branches" element={<Branches />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="access-logs" element={<AccessLogs />} />
               </Route>
             </Routes>
           </Router>
