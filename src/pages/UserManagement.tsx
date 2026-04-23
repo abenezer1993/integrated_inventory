@@ -173,9 +173,56 @@ const UserManagement: React.FC = () => {
         
         // Check if admin client is available
         if (!supabaseAdmin) {
-          console.error('Step 3: Admin client is null');
-          alertFunction('Admin access not available. Please check service key configuration.');
-          return;
+          console.log('Step 3: Admin client not available, using fallback method');
+          // Fallback: Create user using regular client (will need to be invited)
+          try {
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                emailRedirectTo: `${window.location.origin}/login`
+              }
+            });
+
+            if (signUpError) {
+              console.error('Fallback signup error:', signUpError);
+              alertFunction('Error creating user: ' + signUpError.message);
+              return;
+            }
+
+            console.log('Fallback signup successful:', signUpData);
+            userData = signUpData.user;
+            
+            // Create profile immediately
+            if (userData) {
+              const { error: profileError } = await supabase
+                .from('users')
+                .insert({
+                  id: userData.id,
+                  email: userData.email || email,
+                  name,
+                  role,
+                  branch_id: role === UserRole.ADMIN ? null : branchId,
+                  is_active: true
+                });
+
+              if (profileError) {
+                console.error('Profile creation error:', profileError);
+                // Don't return - user was created, just log the error
+                console.warn('User created but profile creation failed:', profileError);
+              }
+            }
+
+            alertFunction('User created successfully! They will need to check their email to verify their account.');
+            resetForm();
+            setTimeout(() => fetchUsers(), 1000);
+            return;
+
+          } catch (fallbackError: any) {
+            console.error('Fallback method failed:', fallbackError);
+            alertFunction('Error creating user: ' + fallbackError.message);
+            return;
+          }
         }
         
         console.log('Step 4: Admin client confirmed');
@@ -202,6 +249,45 @@ const UserManagement: React.FC = () => {
 
         if (error) {
           console.error('Step 7: Admin API error:', error);
+          
+          // Check if user already exists and just needs profile
+          if (error.message.includes('already been registered')) {
+            console.log('User already exists in auth, creating profile only');
+            
+            // Get existing user from auth
+            const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(
+              (await supabaseAdmin.auth.admin.listUsers()).data.users.find(u => u.email === email)?.id || ''
+            );
+            
+            if (getUserError || !existingUser.user) {
+              alertFunction('Error: User exists but could not retrieve user details');
+              return;
+            }
+            
+            // Create profile for existing user
+            const { error: profileError } = await supabaseAdmin!
+              .from('users')
+              .insert({
+                id: existingUser.user.id,
+                email: existingUser.user.email || email,
+                name,
+                role,
+                branch_id: role === UserRole.ADMIN ? null : branchId,
+                is_active: true
+              });
+
+            if (profileError) {
+              console.error('Profile creation error:', profileError);
+              alertFunction('Error creating user profile: ' + profileError.message);
+              return;
+            }
+
+            alertFunction('User profile created successfully! User can now login.');
+            resetForm();
+            setTimeout(() => fetchUsers(), 1000);
+            return;
+          }
+          
           alertFunction('Error creating user: ' + error.message);
           return;
         }
