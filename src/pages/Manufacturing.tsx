@@ -280,8 +280,8 @@ const Manufacturing: React.FC = () => {
   const handleAddProduction = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedCategory || !productName || !quantity || !selectedBranch || !selectedEmployee) {
-      console.error('Please fill in all required fields: category, product name, quantity, branch, and employee');
+    if (!selectedCategory || !productName || !quantity || !selectedBranch) {
+      console.error('Please fill in all required fields: category, product name, quantity, and branch');
       return;
     }
 
@@ -1222,13 +1222,12 @@ const Manufacturing: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Employee <span className="text-red-500">*</span>
+                  Employee
                 </label>
                 <select
                   value={selectedEmployee}
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
                 >
                   <option value="">Select employee</option>
                   {employees.map((employee: any) => (
