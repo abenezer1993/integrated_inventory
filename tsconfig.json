@@ -7,7 +7,6 @@
       "es6"
     ],
     "allowJs": true,
-    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

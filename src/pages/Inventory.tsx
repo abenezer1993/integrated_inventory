@@ -439,7 +439,7 @@ const Inventory: React.FC = () => {
     }));
   };
 
-  const handleTransferFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleTransferFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setTransferForm(prev => ({
       ...prev,
@@ -468,8 +468,7 @@ const Inventory: React.FC = () => {
         .from('inventory')
         .select('quantity')
         .eq('branch_id', transferForm.from_branch_id)
-        .or('product_id', transferForm.product_id)
-        .or('manufactured_product_id', transferForm.product_id)
+        .or('product_id.eq.' + transferForm.product_id + ',manufactured_product_id.eq.' + transferForm.product_id)
         .single();
 
       if (sourceError || !sourceInventory) {
@@ -488,8 +487,7 @@ const Inventory: React.FC = () => {
         .from('inventory')
         .select('quantity')
         .eq('branch_id', transferForm.to_branch_id)
-        .or('product_id', transferForm.product_id)
-        .or('manufactured_product_id', transferForm.product_id)
+        .or('product_id.eq.' + transferForm.product_id + ',manufactured_product_id.eq.' + transferForm.product_id)
         .single();
 
       const newDestQuantity = (destInventory?.quantity || 0) + transferQuantity;
@@ -502,8 +500,7 @@ const Inventory: React.FC = () => {
           last_updated: new Date().toISOString()
         })
         .eq('branch_id', transferForm.from_branch_id)
-        .or('product_id', transferForm.product_id)
-        .or('manufactured_product_id', transferForm.product_id);
+        .or('product_id.eq.' + transferForm.product_id + ',manufactured_product_id.eq.' + transferForm.product_id);
 
       if (updateSourceError) throw updateSourceError;
 
@@ -708,7 +705,7 @@ const Inventory: React.FC = () => {
               <p className="text-lg font-bold text-indigo-600">
                 ETB {(() => {
                   const total = totalInventory.reduce((total, item) => {
-                    const costPrice = item.products?.cost_price || item.manufactured_products?.cost_price || 0;
+                    const costPrice = (item.products as any)?.cost_price || (item.manufactured_products as any)?.cost_price || 0;
                     return total + (costPrice * item.quantity);
                   }, 0);
                   return total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });

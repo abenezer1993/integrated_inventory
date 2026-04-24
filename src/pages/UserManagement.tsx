@@ -164,6 +164,8 @@ const UserManagement: React.FC = () => {
     setLoading(true);
     console.log('Loading set to true, proceeding with user creation...');
 
+    let userData: any = null;
+
     try {
       console.log('Step 1: Starting user creation');
       
@@ -176,7 +178,7 @@ const UserManagement: React.FC = () => {
           console.log('Step 3: Admin client not available, using fallback method');
           // Fallback: Create user using regular client (will need to be invited)
           try {
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            const { data: signUpData, error: signUpError } = await supabase!.auth.signUp({
               email,
               password,
               options: {
@@ -194,7 +196,7 @@ const UserManagement: React.FC = () => {
             userData = signUpData.user;
             
             // Create profile immediately
-            if (userData) {
+            if (userData && supabase) {
               const { error: profileError } = await supabase
                 .from('users')
                 .insert({
@@ -230,8 +232,6 @@ const UserManagement: React.FC = () => {
         console.error('Step 4 ERROR:', err);
         return;
       }
-      
-      let userData: any = null;
       
       try {
         console.log('Step 5: Calling admin API');

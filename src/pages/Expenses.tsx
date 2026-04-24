@@ -315,8 +315,7 @@ const Expenses: React.FC = () => {
         setSelectedOrder('');
         setShowAddModal(false);
         fetchExpenses();
-        fetchGypsumData();
-        fetchWoodData();
+        fetchOptimizedCategoryData();
       } catch (error) {
         console.error('Error adding multiple expenses:', error);
         alertFunction('Error adding expenses. Please try again.');
@@ -346,8 +345,7 @@ const Expenses: React.FC = () => {
         setUnit('');
         setShowAddModal(false);
         fetchExpenses();
-        fetchGypsumData();
-        fetchWoodData();
+        fetchOptimizedCategoryData();
       } catch (error) {
         console.error('Error adding expense:', error);
         alertFunction('Error adding expense. Please try again.');

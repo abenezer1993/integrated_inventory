@@ -201,7 +201,7 @@ const Employees: React.FC = () => {
       
       // Log employee creation
       if (accessLogService && data?.[0]) {
-        accessLogService.logEmployeeCreate(data[0].id, formData.full_name);
+        accessLogService.logEmployeeCreate((data as any)[0].id, formData.full_name);
       }
       
       alertFunction('Employee added successfully!');

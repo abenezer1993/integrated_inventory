@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useConfirmation } from '../utils/confirmations';
+import { Link } from 'react-router-dom';
 import EditOrderModal from '../components/EditOrderModal';
 import ViewOrderModal from '../components/ViewOrderModal';
 import { Product, ManufacturingOrder, ManufacturingExpense } from '../types';
@@ -627,12 +628,12 @@ const Manufacturing: React.FC = () => {
           >
             Record New Production
           </button>
-          <a
-            href="/expenses"
+          <Link
+            to="/app/expenses"
             className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg inline-block"
           >
             Track Expenses
-          </a>
+          </Link>
         </div>
       </div>
 
