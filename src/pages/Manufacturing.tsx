@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useConfirmation } from '../utils/confirmations';
+import { alertFunction } from '../utils/alerts';
 import { Link } from 'react-router-dom';
 import EditOrderModal from '../components/EditOrderModal';
 import ViewOrderModal from '../components/ViewOrderModal';
@@ -27,13 +28,16 @@ const Manufacturing: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'inventory' | 'history' | 'employee_performance'>('overview');
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [materialsUsed, setMaterialsUsed] = useState<{ [key: string]: number }>({});
   const [measurementType, setMeasurementType] = useState<string>('piece');
-  const [unitPrice, setUnitPrice] = useState<string>('');
-  
+    
   // Modal states
   const [viewOrderModal, setViewOrderModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
   const [editOrderModal, setEditOrderModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
+  const [assignEmployeeModal, setAssignEmployeeModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
+  const [assignmentEmployees, setAssignmentEmployees] = useState<string[]>([]);
+  const [employeeEarnings, setEmployeeEarnings] = useState<{ [key: string]: string }>({});
 
     
   // Check if user is loaded
@@ -312,25 +316,7 @@ const Manufacturing: React.FC = () => {
       if (orderError) throw orderError;
       
 
-      // Update the order with employee information
-      const orderId = orderData?.[0]?.id; // RPC returns array, get first item's id
       
-      if (selectedEmployee && orderId) {
-        const { error: updateError, data: updateData } = await supabase!
-          .from('manufacturing_orders')
-          .update({ employee_id: selectedEmployee })
-          .eq('id', orderId)
-          .select()
-          .single();
-          
-          
-        if (updateError) {
-          console.error('Error updating order with employee:', updateError);
-        } else {
-        }
-      } else {
-      }
-
       // Create manufactured product record using RPC to bypass RLS
       const { data: productData, error: productError } = await supabase!
         .rpc('create_manufactured_product_with_branch', {
@@ -383,8 +369,7 @@ const Manufacturing: React.FC = () => {
       setSelectedBranch('');
       setSelectedEmployee('');
       setMeasurementType('piece');
-      setUnitPrice('');
-      setShowAddForm(false);
+            setShowAddForm(false);
       fetchManufacturingOrders();
       
     } catch (error: any) {
@@ -473,6 +458,63 @@ const Manufacturing: React.FC = () => {
       confirmText: 'Delete',
       cancelText: 'Cancel'
     });
+  };
+
+  const handleSaveEmployeeAssignment = async () => {
+    try {
+      const orderId = assignEmployeeModal.order?.id;
+      
+      if (!orderId) return;
+
+      // For wood work: Create separate records for each employee
+      if (assignEmployeeModal.order?.product_category === 'wood') {
+        for (const employeeId of assignmentEmployees) {
+          const earnings = parseFloat(employeeEarnings[employeeId]) || 0;
+          
+          // Update the manufacturing order with employee and earnings
+          const { error } = await supabase!
+            .from('manufacturing_orders')
+            .update({ 
+              employee_id: employeeId,
+              employee_earnings: earnings
+            })
+            .eq('id', orderId);
+          
+          if (error) {
+            console.error('Error updating employee assignment:', error);
+          }
+        }
+      } else {
+        // For gypsum work: Single employee assignment
+        const employeeId = assignmentEmployees[0];
+        const earnings = parseFloat(employeeEarnings[employeeId]) || 0;
+        
+        const { error } = await supabase!
+          .from('manufacturing_orders')
+          .update({ 
+            employee_id: employeeId,
+            employee_earnings: earnings
+          })
+          .eq('id', orderId);
+        
+        if (error) {
+          console.error('Error updating employee assignment:', error);
+        }
+      }
+
+      // Close modal and reset state
+      setAssignEmployeeModal({ isOpen: false, order: null });
+      setAssignmentEmployees([]);
+      setEmployeeEarnings({});
+      
+      // Refresh data
+      fetchManufacturingOrders();
+      
+      alertFunction('Employee assignment saved successfully!');
+    } catch (error) {
+      console.error('Error saving employee assignment:', error);
+      alertFunction('Error saving employee assignment');
+    }
   };
 
   const handleTransferToInventory = (order: any) => {
@@ -968,6 +1010,15 @@ const Manufacturing: React.FC = () => {
                           </svg>
                         </button>
                         <button
+                          onClick={() => setAssignEmployeeModal({ isOpen: true, order })}
+                          className="text-purple-600 hover:text-purple-900 p-1 hover:bg-purple-50 rounded"
+                          title="Assign Employees"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                        </button>
+                        <button
                           onClick={() => handleDeleteOrder(order)}
                           className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded"
                           title="Delete Order"
@@ -1220,24 +1271,7 @@ const Manufacturing: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Employee
-                </label>
-                <select
-                  value={selectedEmployee}
-                  onChange={(e) => setSelectedEmployee(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select employee</option>
-                  {employees.map((employee: any) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.full_name} - {employee.position}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Product Name
@@ -1285,45 +1319,6 @@ const Manufacturing: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Unit Price (ETB)
-                </label>
-                <input
-                  type="number"
-                  value={unitPrice || ''}
-                  onChange={(e) => setUnitPrice(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter price per unit"
-                  min="0"
-                  step="0.01"
-                  required
-                />
-              </div>
-
-              {/* Payment Calculation Display */}
-              {quantity && unitPrice && (
-                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                  <h4 className="text-sm font-semibold text-green-800 mb-2">Employee Payment Calculation</h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-gray-600">Quantity:</span>
-                      <span className="ml-2 font-medium">{quantity} {measurementType || 'piece'}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Unit Price:</span>
-                      <span className="ml-2 font-medium">ETB {parseFloat(unitPrice).toFixed(2)}</span>
-                    </div>
-                    <div className="col-span-2 border-t pt-1 mt-1">
-                      <span className="text-gray-600 font-semibold">Total Payment:</span>
-                      <span className="ml-2 font-bold text-green-600">
-                        ETB {(parseFloat(quantity) * parseFloat(unitPrice)).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Notes (optional)
                 </label>
                 <textarea
@@ -1368,6 +1363,115 @@ const Manufacturing: React.FC = () => {
         onClose={() => setEditOrderModal({ isOpen: false, order: null })}
         onSave={handleSaveOrder}
       />
+
+      {/* Employee Assignment Modal */}
+      {assignEmployeeModal.isOpen && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-white">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Assign Employees - {assignEmployeeModal.order?.order_number}
+            </h3>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600">
+                Product: {assignEmployeeModal.order?.product_name}
+              </p>
+              <p className="text-sm text-gray-600">
+                Category: {assignEmployeeModal.order?.product_category}
+              </p>
+              <p className="text-sm text-gray-600">
+                Quantity: {assignEmployeeModal.order?.quantity_produced}
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Employees {assignEmployeeModal.order?.product_category === 'wood' ? '(Multiple allowed)' : '(Single for gypsum)'}
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                {employees.map((employee: any) => (
+                  <label key={employee.id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                    <input
+                      type={assignEmployeeModal.order?.product_category === 'wood' ? 'checkbox' : 'radio'}
+                      name="employeeSelection"
+                      value={employee.id}
+                      checked={assignEmployeeModal.order?.product_category === 'wood' 
+                        ? assignmentEmployees.includes(employee.id)
+                        : assignmentEmployees.length === 1 && assignmentEmployees[0] === employee.id}
+                      onChange={(e) => {
+                        if (assignEmployeeModal.order?.product_category === 'wood') {
+                          if (e.target.checked) {
+                            setAssignmentEmployees([...assignmentEmployees, employee.id]);
+                          } else {
+                            setAssignmentEmployees(assignmentEmployees.filter(id => id !== employee.id));
+                          }
+                        } else {
+                          // Single selection for gypsum
+                          setAssignmentEmployees([employee.id]);
+                        }
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">
+                      {employee.full_name} - {employee.position}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {assignmentEmployees.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Employee Earnings (ETB)
+                </label>
+                {assignmentEmployees.map((employeeId) => {
+                  const employee = employees.find(emp => emp.id === employeeId);
+                  return (
+                    <div key={employeeId} className="flex items-center space-x-2 mb-2">
+                      <span className="text-sm text-gray-700 w-32">
+                        {employee?.full_name}
+                      </span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={employeeEarnings[employeeId] || ''}
+                        onChange={(e) => setEmployeeEarnings({
+                          ...employeeEarnings,
+                          [employeeId]: e.target.value
+                        })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setAssignEmployeeModal({ isOpen: false, order: null });
+                  setAssignmentEmployees([]);
+                  setEmployeeEarnings({});
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveEmployeeAssignment()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                disabled={assignmentEmployees.length === 0}
+              >
+                Save Assignment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
