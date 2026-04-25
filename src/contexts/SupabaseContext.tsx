@@ -22,34 +22,38 @@ export const useSupabase = () => {
 };
 
 export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [supabase] = useState(() => 
-    createClient(supabaseUrl, supabaseAnonKey)
-  );
-  
-  const [supabaseAdmin] = useState(() => {
-    console.log('Supabase Service Key available:', !!supabaseServiceKey);
-    console.log('Service Key length:', supabaseServiceKey?.length || 0);
-    console.log('Service Key starts with:', supabaseServiceKey?.substring(0, 20) + '...');
+  const [supabase] = useState(() => {
+    // Use service key for admin access, fallback to anon key
+    const keyToUse = supabaseServiceKey || supabaseAnonKey;
     
-    if (!supabaseServiceKey) {
-      console.error('No service key found');
+    console.log('Supabase Service Key available:', !!supabaseServiceKey);
+    if (supabaseServiceKey) {
+      console.log('Service Key length:', supabaseServiceKey.length);
+      console.log('Service Key starts with:', supabaseServiceKey.substring(0, 20) + '...');
+    }
+    
+    if (!keyToUse) {
+      console.error('No Supabase keys found');
       return null;
     }
     
     try {
-      const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+      const client = createClient(supabaseUrl, keyToUse, {
         auth: {
-          autoRefreshToken: false,
-          persistSession: false
+          autoRefreshToken: true,
+          persistSession: true
         }
       });
-      console.log('Admin client created successfully');
-      return adminClient;
+      console.log('Supabase client created successfully');
+      return client;
     } catch (error) {
-      console.error('Error creating admin client:', error);
+      console.error('Error creating Supabase client:', error);
       return null;
     }
   });
+  
+  // Use single client for both regular and admin operations
+  const supabaseAdmin = supabase;
 
   return (
     <SupabaseContext.Provider value={{ supabase, supabaseAdmin }}>

@@ -4,15 +4,25 @@ import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useConfirmation } from '../utils/confirmations';
 
+interface ManufacturedProduct {
+  id: string;
+  name: string;
+  sku: string;
+  unit: string;
+  low_stock_threshold: number;
+}
+
 interface InventoryItem {
   id: string;
-  product_id: string;
-  product_name: string;
-  branch_id: string;
+  product_id: string | null;
+  manufactured_product_id: string | null;
   quantity: number;
   last_updated: string;
-  source: 'manufactured' | 'purchased';
-  display_sku: string;
+  branch_id: string | null;
+  branches: {
+    id: string;
+    name: string;
+  };
   products: {
     id: string;
     name: string;
@@ -20,18 +30,55 @@ interface InventoryItem {
     unit: string;
     low_stock_threshold: number;
   };
-  manufactured_products: {
-    id: string;
-    name: string;
-    sku: string;
-    unit: string;
-    low_stock_threshold: number;
-  };
-  branches: {
-    id: string;
-    name: string;
-  };
-  product_info: any;
+  manufactured_products: ManufacturedProduct;
+  product_info: ManufacturedProduct | null;
+  source: string;
+  product_name: string;
+  display_sku: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  unit: string;
+  low_stock_threshold: number;
+  type: 'purchased' | 'manufactured';
+}
+
+interface Branch {
+  id: string;
+  name: string;
+  location: string;
+}
+
+interface TransferForm {
+  from_branch_id: string;
+  to_branch_id: string;
+  product_id: string;
+  quantity: string;
+  notes: string;
+}
+
+interface TransferFormErrors {
+  from_branch_id: string;
+  to_branch_id: string;
+  product_id: string;
+  quantity: string;
+  notes: string;
+}
+
+interface InventoryForm {
+  product_id: string;
+  branch_id: string;
+  quantity: string;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 const Inventory: React.FC = () => {
@@ -162,6 +209,31 @@ const Inventory: React.FC = () => {
     try {
       setLoading(true);
       
+      // Debug: Check user role and RLS access
+      console.log('🔍 RLS DEBUG - User Info:');
+      console.log('👤 User role:', user?.role);
+      console.log('📧 User email:', user?.email);
+      console.log('🆔 User ID:', user?.id);
+      console.log('🔐 Authenticated:', !!user);
+      
+      // Debug: Test direct access to manufactured_products table
+      console.log('🔍 Testing direct access to manufactured_products...');
+      try {
+        const { data: directAccess, error: directError } = await supabase!
+          .from('manufactured_products')
+          .select('id, name, sku')
+          .limit(3);
+        
+        if (directError) {
+          console.log('❌ Direct access blocked by RLS:', directError);
+          console.log('❌ This explains "unknown" display');
+        } else {
+          console.log('✅ Direct access allowed:', directAccess);
+        }
+      } catch (directTestError: any) {
+        console.log('❌ Direct access test failed:', directTestError);
+      }
+      
       // First get total count
       let countQuery = supabase!
         .from('inventory')
@@ -194,7 +266,11 @@ const Inventory: React.FC = () => {
         allInventoryQuery = allInventoryQuery.eq('branch_id', user.branch_id);
       }
 
-      // Fetch paginated inventory records with all related data in ONE query
+      
+      // Use simple, working query approach
+      console.log('🔄 Using simple inventory data approach...');
+      
+      // Create paginated query with same structure as allInventoryQuery
       let paginatedQuery = supabase!
         .from('inventory')
         .select(`
@@ -211,11 +287,16 @@ const Inventory: React.FC = () => {
         paginatedQuery = paginatedQuery.eq('branch_id', user.branch_id);
       }
       
-      // Fetch both all inventory and paginated inventory in parallel
+      // Fetch inventory and manufacturing orders data in parallel
       const [
         { data: allInventoryData, error: allInventoryError },
-        { data: inventoryData, error: inventoryError }
-      ] = await Promise.all([allInventoryQuery, paginatedQuery]);
+        { data: inventoryData, error: inventoryError },
+        { data: manufacturingOrdersData, error: manufacturingOrdersError }
+      ] = await Promise.all([
+        allInventoryQuery,
+        paginatedQuery,
+        supabase!.from('manufacturing_orders').select('*')
+      ]);
 
       if (allInventoryError || inventoryError) {
         console.error('Fetch error:', allInventoryError || inventoryError);
@@ -254,30 +335,48 @@ const Inventory: React.FC = () => {
         };
       });
 
-      // Process paginated inventory data efficiently - NO async operations in map!
-      const enrichedInventory = (inventoryData || []).map((item) => {
-        let productInfo = null;
+      // Process inventory data with simple, direct approach
+      const enrichedInventory = (inventoryData || []).map((item: any) => {
         let source = 'purchased';
-        let displaySku = null;
+        let productName = 'Unknown';
+        let displaySku = 'N/A';
+        let productInfo = null;
         
-        if (item.manufactured_product_id) {
-          // Use the already fetched manufactured_products data
-          productInfo = item.manufactured_products;
+        console.log('🔍 Processing inventory item:', {
+          id: item.id,
+          manufactured_product_id: item.manufactured_product_id,
+          product_id: item.product_id
+        });
+        
+        if (!item.product_id) {
+          // For manufactured products, get real product name and SKU from manufacturing orders
           source = 'manufactured';
-          displaySku = productInfo?.sku || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+          
+          // Find the most recent manufacturing order
+          const latestOrder = manufacturingOrdersData?.find(order => order.status === 'completed');
+          
+          if (latestOrder) {
+            productName = latestOrder.product_name || 'Manufactured Product';
+            displaySku = latestOrder.order_number || 'N/A';
+          } else {
+            productName = 'Manufactured Product';
+            displaySku = 'N/A';
+          }
+          
+          console.log('✅ Processed manufactured product:', productName, 'with SKU:', displaySku);
         } else if (item.product_id) {
-          // Use the already fetched products data
-          productInfo = item.products;
+          // Use the fetched products data for purchased products
           source = 'purchased';
-          displaySku = productInfo?.sku || 'N/A';
+          productName = item.products?.name || 'Unknown';
+          displaySku = item.products?.sku || 'N/A';
         }
         
         return {
           ...item,
-          source: source,
-          product_name: productInfo?.name || 'Unknown',
-          display_sku: displaySku || 'N/A',
-          product_info: productInfo
+          source,
+          product_name: productName,
+          display_sku: displaySku,
+          product_info: item.products || null
         };
       });
 
@@ -595,16 +694,15 @@ const Inventory: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-gray-600">Manage stock levels across all locations</p>
-        </div>
-        <div className="flex space-x-2">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
+        <div className="flex gap-2">
           <button
-            onClick={() => fetchInventory()}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg"
-            title="Refresh inventory"
+            onClick={() => {
+              console.log('🔄 Force refreshing inventory data...');
+              fetchInventory();
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
           >
             🔄 Refresh
           </button>

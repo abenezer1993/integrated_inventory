@@ -68,6 +68,8 @@ const Expenses: React.FC = () => {
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState('');
   const [unitCost, setUnitCost] = useState('');
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
 
   // Calculate total amount when unit cost or quantity changes
   const calculateTotalAmount = () => {
@@ -79,10 +81,29 @@ const Expenses: React.FC = () => {
 
   // Update amount when unit cost or quantity changes
   useEffect(() => {
-    if (unitCost && quantity) {
-      setAmount(calculateTotalAmount());
-    }
+    const total = calculateTotalAmount();
+    setAmount(total);
   }, [unitCost, quantity]);
+
+  // Fetch employees for multiple selection
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const { data, error } = await supabase!
+          .from('employees')
+          .select('id, full_name, position')
+          .eq('is_active', true)
+          .order('full_name');
+
+        if (error) throw error;
+        setEmployees(data || []);
+      } catch (error) {
+        console.error('Error fetching employees:', error);
+      }
+    };
+
+    fetchEmployees();
+  }, []);
 
   const formatCurrency = (amount: number) => {
     return `ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

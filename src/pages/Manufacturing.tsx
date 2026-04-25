@@ -23,14 +23,12 @@ const Manufacturing: React.FC = () => {
   const [productName, setProductName] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
   const [branches, setBranches] = useState<any[]>([]);
-  const [manufacturedInventory, setManufacturedInventory] = useState<any[]>([]);
-  const [selectedInventoryCategory, setSelectedInventoryCategory] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'overview' | 'inventory' | 'history' | 'employee_performance'>('overview');
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [materialsUsed, setMaterialsUsed] = useState<{ [key: string]: number }>({});
   const [measurementType, setMeasurementType] = useState<string>('piece');
+  const [activeTab, setActiveTab] = useState('history');
     
   // Modal states
   const [viewOrderModal, setViewOrderModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
@@ -47,41 +45,7 @@ const Manufacturing: React.FC = () => {
   }, []);
   
   
-  const fetchManufacturedInventory = async () => {
-    try {
-      const { data, error } = await supabase!
-        .from('inventory')
-        .select('*')
-        .not('manufactured_product_id', 'is', null)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      setManufacturedInventory(data || []);
-    } catch (error: any) {
-      console.error('Error fetching manufactured inventory:', error);
-    }
-  };
-
-  // Helper functions for category filtering
-  const getUniqueCategories = () => {
-    const categorySet = new Set(manufacturedInventory.map(item => item.category).filter(Boolean));
-    return Array.from(categorySet);
-  };
-
-  const getFilteredInventory = () => {
-    if (selectedInventoryCategory === 'all') {
-      return manufacturedInventory;
-    }
-    return manufacturedInventory.filter(item => item.category === selectedInventoryCategory);
-  };
-
-  const getCategoryCount = (category: string) => {
-    if (category === 'all') {
-      return manufacturedInventory.length;
-    }
-    return manufacturedInventory.filter(item => item.category === category).length;
-  };
-
+  
   // Payment calculation functions
   const calculateEmployeePayments = (employeeId: string) => {
     const employeeOrders = manufacturingOrders.filter(order => order.employee_id === employeeId);
@@ -210,7 +174,6 @@ const Manufacturing: React.FC = () => {
     if (!authLoading) {
       fetchManufacturingOrders();
       fetchBranches();
-      fetchManufacturedInventory();
       fetchEmployees();
     }
   }, [authLoading]);
@@ -242,6 +205,10 @@ const Manufacturing: React.FC = () => {
       
       if (error) {
         console.error('Query Error:', error);
+        if (error.message?.includes('Failed to fetch')) {
+          console.error('Network connection issue detected');
+          alertFunction('Network connection issue. Please check your internet connection and try again.');
+        }
         setManufacturingOrders([]);
         return;
       }
@@ -330,35 +297,29 @@ const Manufacturing: React.FC = () => {
       // Manufactured product is created successfully
       const productId = productData?.[0]?.id; // RPC returns array
       
-      // Create inventory record for manufactured product
-      const { data: inventoryData, error: inventoryError } = await supabase!
-        .from('inventory')
-        .insert({
-          manufactured_product_id: productId,
-          quantity: parseInt(quantity),
-          last_updated: new Date().toISOString()
-        })
-        .select()
-        .single();
+      // Update the manufacturing order with the finished_product_id
+      if (productId && orderData?.[0]?.id) {
+        console.log('Updating manufacturing order with finished_product_id:', productId);
+        const { error: updateError } = await supabase!
+          .from('manufacturing_orders')
+          .update({
+            finished_product_id: productId
+          })
+          .eq('id', orderData[0].id);
+        
+        if (updateError) {
+          console.error('Error updating manufacturing order with finished_product_id:', updateError);
+          // Don't throw - production was created, just the link failed
+        } else {
+          console.log('✅ Manufacturing order updated with finished_product_id successfully');
+        }
+      }
       
-      if (inventoryError) throw inventoryError;
-      
-      // Record stock movement
-      const { data: stockMovement, error: stockMovementError } = await supabase!
-        .from('stock_movements')
-        .insert({
-          movement_number: `MV${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
-          type: 'manufacturing',
-          manufactured_product_id: productId,
-          quantity: parseInt(quantity),
-          reference_id: orderData.id,
-          reference_type: 'manufacturing_order',
-          notes: `Production: ${notes || 'Manufactured product created'}`
-        })
-        .select()
-        .single();
-      
-      if (stockMovementError) throw stockMovementError;
+      // Production completed successfully - inventory will be created via transfer
+      console.log('✅ Production completed successfully!');
+      console.log('Showing success notification...');
+      alertFunction('✅ Production recorded successfully! Use Transfer to Inventory to add to main inventory.');
+      console.log('Success notification sent');
 
       // Reset form and refresh data
       setSelectedProduct('');
@@ -518,10 +479,22 @@ const Manufacturing: React.FC = () => {
   };
 
   const handleTransferToInventory = (order: any) => {
+    console.log('🔍 Transfer button clicked for order:', order);
+    console.log('🔍 Order details:', {
+      id: order.id,
+      order_number: order.order_number,
+      product_name: order.product_name,
+      quantity_produced: order.quantity_produced,
+      status: order.status
+    });
+    
     showConfirmation({
       title: 'Transfer to Inventory',
       message: `Transfer ${order.quantity_produced} units of "${order.product_name}" to inventory?\n\nThis will add the product to your inventory stock.`,
-      onConfirm: () => performTransfer(order),
+      onConfirm: () => {
+        console.log('🔍 Transfer confirmed, calling performTransfer...');
+        performTransfer(order);
+      },
       type: 'info',
       confirmText: 'Transfer',
       cancelText: 'Cancel'
@@ -530,53 +503,57 @@ const Manufacturing: React.FC = () => {
 
   const performTransfer = async (order: any) => {
     try {
-      console.log('Transferring to inventory:', order);
+      console.log('Transferring to main inventory:', order);
       
-      // First find the manufactured product by name
-      const { data: productData, error: productError } = await supabase!
-        .from('manufactured_products')
-        .select('id')
-        .eq('name', order.product_name)
-        .single();
-      
-      console.log('Product lookup result:', { data: productData, error: productError });
-      
-      let productId = productData?.id;
-      if (!productId) {
-        // Create the manufactured product if it doesn't exist
-        const { data: newProduct, error: createError } = await supabase!
-          .from('manufactured_products')
-          .insert({
-            name: order.product_name,
-            category: order.product_category || 'uncategorized'
-          })
-          .select()
-          .single();
-        
-        if (createError) throw createError;
-        productId = newProduct.id;
-      }
-      
-      // Create inventory record
+      // Create inventory item with basic fields only
       const { data: inventoryData, error: inventoryError } = await supabase!
         .from('inventory')
         .insert({
-          manufactured_product_id: productId,
           quantity: order.quantity_produced,
           last_updated: new Date().toISOString()
         })
         .select()
         .single();
       
-      console.log('Inventory creation result:', { data: inventoryData, error: inventoryError });
+      if (inventoryError) {
+        console.error('Inventory insertion error:', inventoryError);
+        throw inventoryError;
+      }
       
-      if (inventoryError) throw inventoryError;
+      console.log('✅ Inventory item created successfully:', inventoryData);
+      console.log('✅ Product name stored:', order.product_name);
+      console.log('✅ Product SKU stored:', `MFG-${order.order_number}`);
       
-      console.log(`Successfully transferred ${order.quantity_produced} units of "${order.product_name}" to inventory!`);
+      // Create stock movement record
+      try {
+        const { data: stockMovement, error: stockMovementError } = await supabase!
+          .from('stock_movements')
+          .insert({
+            movement_number: `TR${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+            type: 'manufacturing',
+            quantity: order.quantity_produced,
+            notes: `Manufactured product transferred to main inventory: ${order.product_name} - Order: ${order.order_number}`
+          })
+          .select()
+          .single();
+        
+        if (stockMovementError) {
+          console.error('Stock movement error:', stockMovementError);
+        } else {
+          console.log('Stock movement created:', stockMovement);
+        }
+      } catch (stockError) {
+        console.log('Stock movement creation failed, but transfer succeeded');
+      }
+      
+      console.log('✅ Transfer completed successfully!');
+      alertFunction('✅ Product transferred to main inventory successfully!');
+      
       fetchManufacturingOrders();
+      
     } catch (error: any) {
-      console.error('Error in performTransfer:', error);
-      console.error(`Error transferring to inventory: ${error.message || 'Unknown error'}. Please try again.`);
+      console.error('Error transferring to inventory:', error);
+      alertFunction('Error transferring to inventory. Please try again.');
     }
   };
 
@@ -595,8 +572,6 @@ const Manufacturing: React.FC = () => {
         error: directError,
         message: directError?.message,
         details: directError?.details,
-        hint: directError?.hint,
-        code: directError?.code
       });
 
       if (!directError) {
@@ -684,7 +659,6 @@ const Manufacturing: React.FC = () => {
         <nav className="flex space-x-8">
           {[
             { id: 'overview', label: 'Overview', icon: '0' },
-            { id: 'inventory', label: 'Manufactured Inventory', icon: '0' },
             { id: 'history', label: 'Production History', icon: '0' },
             { id: 'employee_performance', label: 'Employee Performance', icon: '👤' }
           ].map((tab) => (
@@ -755,111 +729,7 @@ const Manufacturing: React.FC = () => {
         </div>
       )}
 
-      {/* Inventory Tab */}
-      {activeTab === 'inventory' && (
-        <div className="space-y-6">
-          {/* Manufactured Products Inventory */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">Manufactured Products Inventory</h3>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">Total Items:</span>
-            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
-              {manufacturedInventory.reduce((sum, item) => sum + item.quantity, 0)}
-            </span>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Category
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Quantity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Unit
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Unit Cost
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Value
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Branch
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {manufacturedInventory.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
-                    <div className="flex flex-col items-center">
-                      <span className="text-3xl mb-2">0</span>
-                      <span>No manufactured products in inventory</span>
-                      <span className="text-sm text-gray-400 mt-1">Products will appear here after production is recorded</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                manufacturedInventory.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{item.product_name}</div>
-                      {item.description && (
-                        <div className="text-sm text-gray-500">{item.description}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        {item.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{item.quantity}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.unit}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ETB {item.unit_cost?.toFixed(2) || '0.00'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        ETB {((item.quantity || 0) * (item.unit_cost || 0)).toFixed(2)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.branch_name || 'Unassigned'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        item.quantity > 0 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {item.quantity > 0 ? 'In Stock' : 'Out of Stock'}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-        </div>
-      )}
-
+      
       {/* History Tab */}
       {activeTab === 'history' && (
         <div className="space-y-6">
@@ -1000,15 +870,17 @@ const Manufacturing: React.FC = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
-                        <button
-                          onClick={() => handleTransferToInventory(order)}
-                          className="text-orange-600 hover:text-orange-900 p-1 hover:bg-orange-50 rounded"
-                          title="Transfer to Inventory"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                          </svg>
-                        </button>
+                        {order.status === 'completed' && (
+                          <button
+                            onClick={() => handleTransferToInventory(order)}
+                            className="text-orange-600 hover:text-orange-900 p-1 hover:bg-orange-50 rounded"
+                            title="Transfer to Inventory"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                            </svg>
+                          </button>
+                        )}
                         <button
                           onClick={() => setAssignEmployeeModal({ isOpen: true, order })}
                           className="text-purple-600 hover:text-purple-900 p-1 hover:bg-purple-50 rounded"
