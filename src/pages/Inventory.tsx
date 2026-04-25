@@ -123,15 +123,21 @@ const Inventory: React.FC = () => {
     total: 0,
     totalPages: 0
   });
+  
+  const [manufacturedPagination, setManufacturedPagination] = useState({
+    page: 1,
+    limit: 15,
+    total: 0,
+    totalPages: 0
+  });
+  
+  const [purchasedPagination, setPurchasedPagination] = useState({
+    page: 1,
+    limit: 15,
+    total: 0,
+    totalPages: 0
+  });
   const [totalInventory, setTotalInventory] = useState<InventoryItem[]>([]);
-
-  // Memoized filtering to prevent re-renders
-  const filteredInventory = useMemo(() => {
-    return inventory.filter(item => {
-      if (filter === 'all') return true;
-      return item.source === filter;
-    });
-  }, [inventory, filter]);
 
   // Use total inventory for accurate filter counts
   const manufacturedInventory = useMemo(() => {
@@ -141,6 +147,22 @@ const Inventory: React.FC = () => {
   const purchasedInventory = useMemo(() => {
     return totalInventory.filter(item => item.source === 'purchased');
   }, [totalInventory]);
+
+  // Memoized filtering to prevent re-renders
+  const filteredInventory = useMemo(() => {
+    switch (filter) {
+      case 'manufactured':
+        const mfgStart = (manufacturedPagination.page - 1) * manufacturedPagination.limit;
+        const mfgEnd = mfgStart + manufacturedPagination.limit;
+        return manufacturedInventory.slice(mfgStart, mfgEnd);
+      case 'purchased':
+        const purStart = (purchasedPagination.page - 1) * purchasedPagination.limit;
+        const purEnd = purStart + purchasedPagination.limit;
+        return purchasedInventory.slice(purStart, purEnd);
+      default:
+        return inventory; // Show paginated inventory (includes both manufactured + purchased)
+    }
+  }, [inventory, filter, manufacturedInventory, purchasedInventory, manufacturedPagination.page, manufacturedPagination.limit, purchasedPagination.page, purchasedPagination.limit]);
 
   // Filter products based on search
   const filteredProducts = useMemo(() => {
@@ -154,6 +176,7 @@ const Inventory: React.FC = () => {
     );
   }, [products, productSearch]);
 
+  
   useEffect(() => {
     fetchInventory();
     fetchBranches();
@@ -209,31 +232,6 @@ const Inventory: React.FC = () => {
     try {
       setLoading(true);
       
-      // Debug: Check user role and RLS access
-      console.log('🔍 RLS DEBUG - User Info:');
-      console.log('👤 User role:', user?.role);
-      console.log('📧 User email:', user?.email);
-      console.log('🆔 User ID:', user?.id);
-      console.log('🔐 Authenticated:', !!user);
-      
-      // Debug: Test direct access to manufactured_products table
-      console.log('🔍 Testing direct access to manufactured_products...');
-      try {
-        const { data: directAccess, error: directError } = await supabase!
-          .from('manufactured_products')
-          .select('id, name, sku')
-          .limit(3);
-        
-        if (directError) {
-          console.log('❌ Direct access blocked by RLS:', directError);
-          console.log('❌ This explains "unknown" display');
-        } else {
-          console.log('✅ Direct access allowed:', directAccess);
-        }
-      } catch (directTestError: any) {
-        console.log('❌ Direct access test failed:', directTestError);
-      }
-      
       // First get total count
       let countQuery = supabase!
         .from('inventory')
@@ -267,9 +265,7 @@ const Inventory: React.FC = () => {
       }
 
       
-      // Use simple, working query approach
-      console.log('🔄 Using simple inventory data approach...');
-      
+            
       // Create paginated query with same structure as allInventoryQuery
       let paginatedQuery = supabase!
         .from('inventory')
@@ -303,6 +299,7 @@ const Inventory: React.FC = () => {
         throw allInventoryError || inventoryError;
       }
 
+      
       // Update pagination state
       setPagination(prev => ({
         ...prev,
@@ -312,25 +309,46 @@ const Inventory: React.FC = () => {
 
       // Process ALL inventory data for filter counts
       const enrichedTotalInventory = (allInventoryData || []).map((item) => {
-        let productInfo = null;
         let source = 'purchased';
-        let displaySku = null;
+        let productName = 'Unknown';
+        let displaySku = 'N/A';
+        let productInfo = null;
         
-        if (item.manufactured_product_id) {
-          productInfo = item.manufactured_products;
-          source = 'manufactured';
-          displaySku = productInfo?.sku || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
-        } else if (item.product_id) {
-          productInfo = item.products;
+        if (item.product_id && item.products) {
+          // Use the products data for purchased products
           source = 'purchased';
-          displaySku = productInfo?.sku || 'N/A';
+          productName = item.products.name || 'Unknown';
+          displaySku = item.products.sku || 'N/A';
+          productInfo = item.products;
+        } else if (item.manufactured_product_id && !item.product_id) {
+          // For manufactured products, use manufacturing orders data
+          source = 'manufactured';
+          
+          // Find the manufacturing order that matches this manufactured_product_id
+          const manufacturingOrder = manufacturingOrdersData?.find(order => 
+            order.finished_product_id === item.manufactured_product_id && 
+            order.status === 'completed'
+          );
+          
+          if (manufacturingOrder) {
+            productName = manufacturingOrder.product_name || 'Manufactured Product';
+            displaySku = manufacturingOrder.order_number || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+          } else {
+            productName = 'Manufactured Product';
+            displaySku = 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+          }
+        } else {
+          // Handle orphaned items (both null)
+          source = 'unknown';
+          productName = 'Unknown Product';
+          displaySku = 'N/A';
         }
         
         return {
           ...item,
           source: source,
-          product_name: productInfo?.name || 'Unknown',
-          display_sku: displaySku || 'N/A',
+          product_name: productName,
+          display_sku: displaySku,
           product_info: productInfo
         };
       });
@@ -342,33 +360,34 @@ const Inventory: React.FC = () => {
         let displaySku = 'N/A';
         let productInfo = null;
         
-        console.log('🔍 Processing inventory item:', {
-          id: item.id,
-          manufactured_product_id: item.manufactured_product_id,
-          product_id: item.product_id
-        });
-        
-        if (!item.product_id) {
-          // For manufactured products, get real product name and SKU from manufacturing orders
+        if (item.product_id && item.products) {
+          // Use the products data for purchased products
+          source = 'purchased';
+          productName = item.products.name || 'Unknown';
+          displaySku = item.products.sku || 'N/A';
+          productInfo = item.products;
+        } else if (item.manufactured_product_id && !item.product_id) {
+          // For manufactured products, use manufacturing orders data
           source = 'manufactured';
           
-          // Find the most recent manufacturing order
-          const latestOrder = manufacturingOrdersData?.find(order => order.status === 'completed');
+          // Find the manufacturing order that matches this manufactured_product_id
+          const manufacturingOrder = manufacturingOrdersData?.find(order => 
+            order.finished_product_id === item.manufactured_product_id && 
+            order.status === 'completed'
+          );
           
-          if (latestOrder) {
-            productName = latestOrder.product_name || 'Manufactured Product';
-            displaySku = latestOrder.order_number || 'N/A';
+          if (manufacturingOrder) {
+            productName = manufacturingOrder.product_name || 'Manufactured Product';
+            displaySku = manufacturingOrder.order_number || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
           } else {
             productName = 'Manufactured Product';
-            displaySku = 'N/A';
+            displaySku = 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
           }
-          
-          console.log('✅ Processed manufactured product:', productName, 'with SKU:', displaySku);
-        } else if (item.product_id) {
-          // Use the fetched products data for purchased products
-          source = 'purchased';
-          productName = item.products?.name || 'Unknown';
-          displaySku = item.products?.sku || 'N/A';
+        } else {
+          // Handle orphaned items (both null)
+          source = 'unknown';
+          productName = 'Unknown Product';
+          displaySku = 'N/A';
         }
         
         return {
@@ -382,6 +401,19 @@ const Inventory: React.FC = () => {
 
       setInventory(enrichedInventory);
       setTotalInventory(enrichedTotalInventory);
+      
+      // Update pagination states for manufactured and purchased tabs
+      setManufacturedPagination(prev => ({
+        ...prev,
+        total: manufacturedInventory.length,
+        totalPages: Math.ceil(manufacturedInventory.length / prev.limit)
+      }));
+      
+      setPurchasedPagination(prev => ({
+        ...prev,
+        total: purchasedInventory.length,
+        totalPages: Math.ceil(purchasedInventory.length / prev.limit)
+      }));
     } catch (error) {
       console.error('Error fetching inventory:', error);
     } finally {
@@ -392,13 +424,7 @@ const Inventory: React.FC = () => {
   const handleStockAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('Adjustment form data:', {
-      selectedItem,
-      adjustmentQuantity,
-      adjustmentType,
-      adjustmentNotes
-    });
-    
+        
     if (!selectedItem) {
       alertFunction('Please select an inventory item');
       return;
@@ -560,7 +586,6 @@ const Inventory: React.FC = () => {
     }
 
     try {
-      console.log('Initiating stock transfer:', transferForm);
 
       // Check if product exists at source branch
       const { data: sourceInventory, error: sourceError } = await supabase!
@@ -698,10 +723,7 @@ const Inventory: React.FC = () => {
         <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              console.log('🔄 Force refreshing inventory data...');
-              fetchInventory();
-            }}
+            onClick={() => fetchInventory()}
             className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
           >
             🔄 Refresh
@@ -926,7 +948,6 @@ const Inventory: React.FC = () => {
                       <div className="flex space-x-1">
                         <button
                           onClick={() => {
-                            console.log('Adjust stock button clicked for item:', item);
                             setSelectedItem(item);
                             setShowAdjustForm(true);
                           }}
@@ -962,29 +983,64 @@ const Inventory: React.FC = () => {
         <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
           <div className="flex items-center text-sm text-gray-700">
             <span className="text-xs">
-              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} results
+              {filter === 'all' && (
+                <>Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} results</>
+              )}
+              {filter === 'manufactured' && (
+                <>Showing {((manufacturedPagination.page - 1) * manufacturedPagination.limit) + 1} to {Math.min(manufacturedPagination.page * manufacturedPagination.limit, manufacturedPagination.total)} of {manufacturedPagination.total} results</>
+              )}
+              {filter === 'purchased' && (
+                <>Showing {((purchasedPagination.page - 1) * purchasedPagination.limit) + 1} to {Math.min(purchasedPagination.page * purchasedPagination.limit, purchasedPagination.total)} of {purchasedPagination.total} results</>
+              )}
             </span>
           </div>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-              disabled={pagination.page === 1}
+              onClick={() => {
+                if (filter === 'all') {
+                  setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }));
+                } else if (filter === 'manufactured') {
+                  setManufacturedPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }));
+                } else if (filter === 'purchased') {
+                  setPurchasedPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }));
+                }
+              }}
+              disabled={
+                (filter === 'all' && pagination.page === 1) ||
+                (filter === 'manufactured' && manufacturedPagination.page === 1) ||
+                (filter === 'purchased' && purchasedPagination.page === 1)
+              }
               className="px-2 py-1 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
             
             <div className="flex space-x-1">
-              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+              {Array.from({ length: Math.min(5, 
+                filter === 'all' ? pagination.totalPages :
+                filter === 'manufactured' ? manufacturedPagination.totalPages :
+                purchasedPagination.totalPages
+              ) }, (_, i) => {
                 const pageNumber = i + 1;
+                const currentPage = filter === 'all' ? pagination.page :
+                                  filter === 'manufactured' ? manufacturedPagination.page :
+                                  purchasedPagination.page;
                 return (
                   <button
                     key={pageNumber}
-                    onClick={() => setPagination(prev => ({ ...prev, page: pageNumber }))}
+                    onClick={() => {
+                      if (filter === 'all') {
+                        setPagination(prev => ({ ...prev, page: pageNumber }));
+                      } else if (filter === 'manufactured') {
+                        setManufacturedPagination(prev => ({ ...prev, page: pageNumber }));
+                      } else if (filter === 'purchased') {
+                        setPurchasedPagination(prev => ({ ...prev, page: pageNumber }));
+                      }
+                    }}
                     className={`px-2 py-1 text-xs font-medium rounded ${
-                      pagination.page === pageNumber
+                      currentPage === pageNumber
                         ? 'bg-blue-600 text-white'
-                        : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
                     }`}
                   >
                     {pageNumber}
@@ -994,8 +1050,20 @@ const Inventory: React.FC = () => {
             </div>
             
             <button
-              onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
-              disabled={pagination.page === pagination.totalPages}
+              onClick={() => {
+                if (filter === 'all') {
+                  setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }));
+                } else if (filter === 'manufactured') {
+                  setManufacturedPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }));
+                } else if (filter === 'purchased') {
+                  setPurchasedPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }));
+                }
+              }}
+              disabled={
+                (filter === 'all' && pagination.page === pagination.totalPages) ||
+                (filter === 'manufactured' && manufacturedPagination.page === manufacturedPagination.totalPages) ||
+                (filter === 'purchased' && purchasedPagination.page === purchasedPagination.totalPages)
+              }
               className="px-2 py-1 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
