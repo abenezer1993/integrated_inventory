@@ -237,9 +237,7 @@ const Manufacturing: React.FC = () => {
         })
       );
       
-      console.log('Orders with details:', ordersWithDetails);
-      console.log('Setting manufacturing orders state with', ordersWithDetails.length, 'items');
-      setManufacturingOrders(ordersWithDetails);
+            setManufacturingOrders(ordersWithDetails);
     } catch (error) {
       console.error('Error fetching manufacturing orders:', error);
       setManufacturingOrders([]);

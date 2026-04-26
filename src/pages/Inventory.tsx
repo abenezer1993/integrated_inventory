@@ -254,8 +254,7 @@ const Inventory: React.FC = () => {
         .select(`
           *,
           branches (id, name, location),
-          products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold),
-          manufactured_products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold)
+          products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold)
         `)
         .order('last_updated', { ascending: false });
       
@@ -272,8 +271,7 @@ const Inventory: React.FC = () => {
         .select(`
           *,
           branches (id, name, location),
-          products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold),
-          manufactured_products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold)
+          products (id, name, sku, unit, cost_price, selling_price, low_stock_threshold)
         `)
         .order('last_updated', { ascending: false })
         .range((pagination.page - 1) * pagination.limit, pagination.page * pagination.limit - 1);
@@ -294,10 +292,83 @@ const Inventory: React.FC = () => {
         supabase!.from('manufacturing_orders').select('*')
       ]);
 
+      
       if (allInventoryError || inventoryError) {
         console.error('Fetch error:', allInventoryError || inventoryError);
         throw allInventoryError || inventoryError;
       }
+
+      // Optimize: Collect all unique branch_ids needed
+      const directBranchIds = new Set<string>();
+      const manufacturingBranchIds = new Set<string>();
+      
+      (inventoryData || []).forEach((item: any) => {
+        if (item.branch_id) {
+          directBranchIds.add(item.branch_id);
+        } else if (item.manufactured_product_id) {
+          const manufacturingOrder = manufacturingOrdersData?.find((order: any) => 
+            order.finished_product_id === item.manufactured_product_id
+          );
+          if (manufacturingOrder?.branch_id) {
+            manufacturingBranchIds.add(manufacturingOrder.branch_id);
+          }
+        }
+      });
+      
+      // Fetch all needed branches in batch
+      const allBranchIds = Array.from(new Set([...Array.from(directBranchIds), ...Array.from(manufacturingBranchIds)]));
+      const { data: allBranchesData } = await supabase!
+        .from('branches')
+        .select('id, name, location')
+        .in('id', allBranchIds);
+      
+      // Create branch lookup map
+      const branchMap = new Map();
+      (allBranchesData || []).forEach(branch => {
+        branchMap.set(branch.id, branch);
+      });
+      
+      // Now assign branches to inventory items (no more individual queries)
+      const inventoryWithBranches = (inventoryData || []).map((item: any) => {
+        let branchData = null;
+        
+        if (item.branch_id) {
+          branchData = branchMap.get(item.branch_id) || null;
+        } else if (item.manufactured_product_id) {
+          const manufacturingOrder = manufacturingOrdersData?.find((order: any) => 
+            order.finished_product_id === item.manufactured_product_id
+          );
+          if (manufacturingOrder?.branch_id) {
+            branchData = branchMap.get(manufacturingOrder.branch_id) || null;
+          }
+        }
+        
+        return {
+          ...item,
+          branches: branchData
+        };
+      });
+
+      // Use the same optimized approach for allInventoryWithBranches
+      const allInventoryWithBranches = (allInventoryData || []).map((item: any) => {
+        let branchData = null;
+        
+        if (item.branch_id) {
+          branchData = branchMap.get(item.branch_id) || null;
+        } else if (item.manufactured_product_id) {
+          const manufacturingOrder = manufacturingOrdersData?.find((order: any) => 
+            order.finished_product_id === item.manufactured_product_id
+          );
+          if (manufacturingOrder?.branch_id) {
+            branchData = branchMap.get(manufacturingOrder.branch_id) || null;
+          }
+        }
+        
+        return {
+          ...item,
+          branches: branchData
+        };
+      });
 
       
       // Update pagination state
@@ -308,7 +379,7 @@ const Inventory: React.FC = () => {
       }));
 
       // Process ALL inventory data for filter counts
-      const enrichedTotalInventory = (allInventoryData || []).map((item) => {
+      const enrichedTotalInventory = (allInventoryWithBranches || []).map((item) => {
         let source = 'purchased';
         let productName = 'Unknown';
         let displaySku = 'N/A';
@@ -354,7 +425,7 @@ const Inventory: React.FC = () => {
       });
 
       // Process inventory data with simple, direct approach
-      const enrichedInventory = (inventoryData || []).map((item: any) => {
+      const enrichedInventory = (inventoryWithBranches || []).map((item: any) => {
         let source = 'purchased';
         let productName = 'Unknown';
         let displaySku = 'N/A';
@@ -929,7 +1000,7 @@ const Inventory: React.FC = () => {
                       {item.display_sku || 'N/A'}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-900">
-                      {item.branches?.name || 'Main Branch'}
+                      {item.branches?.name || 'Unknown Branch'}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       <div className="text-xs font-medium text-gray-900">
