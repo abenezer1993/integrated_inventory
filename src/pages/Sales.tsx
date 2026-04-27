@@ -40,6 +40,7 @@ interface SalesFormData {
   product_id: string;
   quantity: string;
   unit_price: string;
+  sale_date: string;
 }
 
 const Sales: React.FC = () => {
@@ -57,6 +58,7 @@ const Sales: React.FC = () => {
     product_id: '',
     quantity: '',
     unit_price: '',
+    sale_date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [totalSales, setTotalSales] = useState(0);
@@ -419,6 +421,7 @@ const Sales: React.FC = () => {
           cost_price: productCostPrice,
           profit: profit,
           customer_name: formData.customer_name,
+          sale_date: formData.sale_date,
           created_by: user?.id
         };
 
@@ -475,6 +478,7 @@ const Sales: React.FC = () => {
         product_id: '',
         quantity: '',
         unit_price: '',
+        sale_date: new Date().toISOString().split('T')[0], // Reset to today's date
       });
       setCartItems([]);
       setShowForm(false);
@@ -646,7 +650,8 @@ const Sales: React.FC = () => {
       customer_name: sale.customer_name,
       product_id: sale.product_id || sale.manufactured_product_id || '',
       quantity: sale.quantity_sold.toString(),
-      unit_price: sale.unit_price.toString()
+      unit_price: sale.unit_price.toString(),
+      sale_date: sale.sale_date ? new Date(sale.sale_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
     });
     setShowForm(true);
   };
@@ -847,7 +852,7 @@ const Sales: React.FC = () => {
               </div>
             </div>
             <p className="text-3xl font-bold text-gray-900 truncate">
-              {sales.reduce((sum, sale) => sum + sale.total_amount, 0).toLocaleString()}
+              {sales.reduce((sum, sale) => sum + sale.quantity_sold, 0).toLocaleString()}
             </p>
             <p className="text-xs text-gray-500 mt-1">Total units</p>
           </div>
@@ -856,14 +861,58 @@ const Sales: React.FC = () => {
         <div className="bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
           <div className="flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-gray-600">Average Sale</p>
+              <p className="text-sm font-medium text-gray-600">Total Profit</p>
               <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-orange-600 truncate">
+              ETB {sales.reduce((sum, sale) => sum + (sale.profit || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">All time profit</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Additional Dashboard Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-gray-600">Today's Sales</p>
+              <div className="w-12 h-12 bg-indigo-500 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-indigo-600 truncate">
+              ETB {sales
+                .filter(sale => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const saleDate = new Date(sale.sale_date).toISOString().split('T')[0];
+                  return saleDate === today;
+                })
+                .reduce((sum, sale) => sum + sale.total_amount, 0)
+                .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Today's revenue</p>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-gray-600">Average Sale</p>
+              <div className="w-12 h-12 bg-teal-500 rounded-lg flex items-center justify-center">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
               </div>
             </div>
-            <p className="text-2xl font-bold text-orange-600 truncate">
+            <p className="text-2xl font-bold text-teal-600 truncate">
               ETB {sales.length > 0 ? (sales.reduce((sum, sale) => sum + sale.total_amount, 0) / sales.length).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
             </p>
             <p className="text-xs text-gray-500 mt-1">Per transaction</p>
@@ -891,7 +940,7 @@ const Sales: React.FC = () => {
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Customer and Branch Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Branch *</label>
                 <select
@@ -919,6 +968,18 @@ const Sales: React.FC = () => {
                   onChange={handleInputChange}
                   name="customer_name"
                   placeholder="Enter customer name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Sales Date *</label>
+                <input
+                  type="date"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  value={formData.sale_date}
+                  onChange={handleInputChange}
+                  name="sale_date"
+                  max={new Date().toISOString().split('T')[0]} // Prevent future dates
                 />
               </div>
             </div>
