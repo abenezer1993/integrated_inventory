@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { showAlert } from '../utils/simpleDialogs';
 import { useAuth } from '../contexts/AuthContext-debug';
 import { useConfirmation } from '../utils/confirmations';
-import { alertFunction } from '../utils/alerts';
 import { Link } from 'react-router-dom';
 import EditOrderModal from '../components/EditOrderModal';
 import ViewOrderModal from '../components/ViewOrderModal';
@@ -36,6 +36,7 @@ const Manufacturing: React.FC = () => {
   const [assignEmployeeModal, setAssignEmployeeModal] = useState<{ isOpen: boolean; order: any }>({ isOpen: false, order: null });
   const [assignmentEmployees, setAssignmentEmployees] = useState<string[]>([]);
   const [employeeEarnings, setEmployeeEarnings] = useState<{ [key: string]: string }>({});
+  const [employeePayments, setEmployeePayments] = useState<{ [key: string]: { measurementType: string; quantity: string; unitPrice: string; totalPayment: number } }>({});
 
     
   // Check if user is loaded
@@ -43,53 +44,133 @@ const Manufacturing: React.FC = () => {
     // Set authLoading to false immediately since we have the user context
     setAuthLoading(false);
   }, []);
+
+  // Payment calculation function
+  const calculateEmployeePayment = (employeeId: string) => {
+    const payment = employeePayments[employeeId];
+    if (!payment) return 0;
+    
+    const quantity = parseFloat(payment.quantity) || 0;
+    const unitPrice = parseFloat(payment.unitPrice) || 0;
+    
+    return quantity * unitPrice;
+  };
+
+  // Update payment when measurement type, quantity, or unit price changes
+  const updateEmployeePayment = (employeeId: string, field: 'measurementType' | 'quantity' | 'unitPrice', value: string) => {
+    const currentPayment = employeePayments[employeeId] || {
+      measurementType: 'piece',
+      quantity: '0',
+      unitPrice: '0',
+      totalPayment: 0
+    };
+
+    const updatedPayment = {
+      ...currentPayment,
+      [field]: value
+    };
+
+    // Calculate total payment
+    const quantity = parseFloat(updatedPayment.quantity) || 0;
+    const unitPrice = parseFloat(updatedPayment.unitPrice) || 0;
+    updatedPayment.totalPayment = quantity * unitPrice;
+
+    setEmployeePayments({
+      ...employeePayments,
+      [employeeId]: updatedPayment
+    });
+
+    // Also update the earnings field for compatibility
+    setEmployeeEarnings({
+      ...employeeEarnings,
+      [employeeId]: updatedPayment.totalPayment.toString()
+    });
+  };
   
   
   
   // Payment calculation functions
   const calculateEmployeePayments = (employeeId: string) => {
     const employeeOrders = manufacturingOrders.filter(order => order.employee_id === employeeId);
+    
+    // Also find orders where this employee is mentioned in payment notes
+    const ordersWithEmployeeInNotes = manufacturingOrders.filter(order => {
+      if (!order.notes) return false;
+      return order.notes.includes('EMPLOYEE_PAYMENTS:') && 
+             order.notes.includes(`"employee_id":"${employeeId}"`);
+    });
 
-    // Calculate total payments from manufacturing records
-    const totalPayments = employeeOrders.reduce((sum, order) => {
-      // Extract payment info from order notes or calculate from quantity and unit price
-      const quantity = order.quantity_produced || 0;
-      // For now, assume unit price is stored in notes or calculate default
-      const unitPrice = 500; // Default fallback - should be stored with order
-      return sum + (quantity * unitPrice);
-    }, 0);
+    // Combine both sets of orders
+    const allRelevantOrders = [...employeeOrders, ...ordersWithEmployeeInNotes];
 
-    // Group by measurement type
+    // Calculate total payments from manufacturing records and payment notes
+    let totalPayments = 0;
     const paymentsByType = {
       piece: 0,
       m2: 0,
-      day: 0
+      day: 0,
+      month: 0
     };
+    const recentPayments: any[] = [];
 
-    employeeOrders.forEach(order => {
-      const quantity = order.quantity_produced || 0;
-      const unitPrice = 500; // Default fallback
-      const measurementType = 'piece'; // Default - should be stored with order
-      paymentsByType[measurementType as keyof typeof paymentsByType] += quantity * unitPrice;
+    allRelevantOrders.forEach(order => {
+      // Check if payment details are stored in notes
+      if (order.notes && order.notes.includes('EMPLOYEE_PAYMENTS:')) {
+        try {
+          const paymentDataMatch = order.notes.match(/EMPLOYEE_PAYMENTS:(\[.*?\])/);
+          if (paymentDataMatch) {
+            const paymentData = JSON.parse(paymentDataMatch[1]);
+            const employeePayment = paymentData.find((p: any) => p.employee_id === employeeId);
+            
+            if (employeePayment) {
+              const payment = parseFloat(employeePayment.total_payment) || 0;
+              totalPayments += payment;
+              
+              const measurementType = employeePayment.measurement_type || 'piece';
+              if (measurementType in paymentsByType) {
+                paymentsByType[measurementType as keyof typeof paymentsByType] += payment;
+              }
+              
+              recentPayments.push({
+                date: new Date(order.created_at).toLocaleDateString(),
+                product: order.product_name || 'Unknown',
+                quantity: parseFloat(employeePayment.quantity) || 0,
+                measurement: measurementType,
+                unitPrice: parseFloat(employeePayment.unit_price) || 0,
+                totalPayment: payment
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing payment notes:', error);
+        }
+      } else {
+        // Fallback to old calculation method
+        const quantity = order.quantity_produced || 0;
+        const unitPrice = 500; // Default fallback
+        const payment = quantity * unitPrice;
+        totalPayments += payment;
+        paymentsByType.piece += payment;
+        
+        recentPayments.push({
+          date: new Date(order.created_at).toLocaleDateString(),
+          product: order.product_name || 'Unknown',
+          quantity: quantity,
+          measurement: 'piece',
+          unitPrice: unitPrice,
+          totalPayment: payment
+        });
+      }
     });
 
-    // Recent payments (last 10)
-    const recentPayments = employeeOrders
-      .slice(0, 10)
-      .map(order => ({
-        date: new Date(order.created_at).toLocaleDateString(),
-        product: order.product_name || 'Unknown',
-        quantity: order.quantity_produced || 0,
-        measurement: 'piece', // Should be stored with order
-        unitPrice: 500, // Should be stored with order
-        totalPayment: (order.quantity_produced || 0) * 500
-      }));
+    // Sort recent payments by date and limit to 10
+    recentPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return {
       totalPayments,
       paymentsByType,
-      recentPayments,
-      totalOrders: employeeOrders.length
+      recentPayments: recentPayments.slice(0, 10),
+      totalOrders: allRelevantOrders.length
     };
   };
 
@@ -207,7 +288,7 @@ const Manufacturing: React.FC = () => {
         console.error('Query Error:', error);
         if (error.message?.includes('Failed to fetch')) {
           console.error('Network connection issue detected');
-          alertFunction('Network connection issue. Please check your internet connection and try again.');
+          showAlert('Connection Error', 'Network connection issue. Please check your internet connection and try again.', 'error');
         }
         setManufacturingOrders([]);
         return;
@@ -316,7 +397,7 @@ const Manufacturing: React.FC = () => {
       // Production completed successfully - inventory will be created via transfer
       console.log('✅ Production completed successfully!');
       console.log('Showing success notification...');
-      alertFunction('✅ Production recorded successfully! Use Transfer to Inventory to add to main inventory.');
+      showAlert('Success', '✅ Production recorded successfully! Use Transfer to Inventory to add to main inventory.', 'success');
       console.log('Success notification sent');
 
       // Reset form and refresh data
@@ -425,54 +506,73 @@ const Manufacturing: React.FC = () => {
       
       if (!orderId) return;
 
-      // For wood work: Create separate records for each employee
-      if (assignEmployeeModal.order?.product_category === 'wood') {
-        for (const employeeId of assignmentEmployees) {
-          const earnings = parseFloat(employeeEarnings[employeeId]) || 0;
-          
-          // Update the manufacturing order with employee and earnings
-          const { error } = await supabase!
-            .from('manufacturing_orders')
-            .update({ 
-              employee_id: employeeId,
-              employee_earnings: earnings
-            })
-            .eq('id', orderId);
-          
-          if (error) {
-            console.error('Error updating employee assignment:', error);
-          }
-        }
-      } else {
-        // For gypsum work: Single employee assignment
-        const employeeId = assignmentEmployees[0];
-        const earnings = parseFloat(employeeEarnings[employeeId]) || 0;
-        
-        const { error } = await supabase!
-          .from('manufacturing_orders')
-          .update({ 
-            employee_id: employeeId,
-            employee_earnings: earnings
-          })
-          .eq('id', orderId);
-        
-        if (error) {
-          console.error('Error updating employee assignment:', error);
-        }
+      console.log('🔍 Saving employee assignment:', {
+        orderId,
+        employees: assignmentEmployees,
+        payments: employeePayments,
+        currentOrder: assignEmployeeModal.order
+      });
+
+      // Assign the first employee to the order and store all payment details in notes
+      const employeeId = assignmentEmployees[0];
+      
+      // Create payment details string to store in notes
+      const employeePaymentDetails = assignmentEmployees.map(empId => {
+        const employee = employees.find(emp => emp.id === empId);
+        const payment = employeePayments[empId];
+        return {
+          employee_id: empId,
+          employee_name: employee?.full_name || 'Unknown',
+          measurement_type: payment?.measurementType || 'piece',
+          quantity: payment?.quantity || '0',
+          unit_price: payment?.unitPrice || '0',
+          total_payment: payment?.totalPayment || 0
+        };
+      });
+      
+      const paymentNotes = JSON.stringify(employeePaymentDetails);
+      
+      const updateData = { 
+        employee_id: employeeId,
+        notes: assignEmployeeModal.order?.notes 
+          ? `${assignEmployeeModal.order.notes}\n\nEMPLOYEE_PAYMENTS:${paymentNotes}`
+          : `EMPLOYEE_PAYMENTS:${paymentNotes}`
+      };
+      
+      console.log('🔍 Updating order with data:', updateData);
+      console.log('🔍 Order ID:', orderId);
+      console.log('🔍 All assigned employees:', assignmentEmployees);
+      console.log('🔍 Payment details for all employees:', employeePaymentDetails);
+      
+      const { error: updateError } = await supabase!
+        .from('manufacturing_orders')
+        .update(updateData)
+        .eq('id', orderId);
+      
+      if (updateError) {
+        console.error('Error updating order assignment:', updateError);
+        console.error('Error details:', {
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          code: updateError.code
+        });
+        throw updateError;
       }
 
       // Close modal and reset state
       setAssignEmployeeModal({ isOpen: false, order: null });
       setAssignmentEmployees([]);
       setEmployeeEarnings({});
+      setEmployeePayments({});
       
       // Refresh data
       fetchManufacturingOrders();
       
-      alertFunction('Employee assignment saved successfully!');
+      showAlert('Success', 'Employee assignment saved successfully!', 'success');
     } catch (error) {
       console.error('Error saving employee assignment:', error);
-      alertFunction('Error saving employee assignment');
+      showAlert('Error', 'Error saving employee assignment', 'error');
     }
   };
 
@@ -545,13 +645,13 @@ const Manufacturing: React.FC = () => {
       }
       
       console.log('✅ Transfer completed successfully!');
-      alertFunction('✅ Product transferred to main inventory successfully!');
+      showAlert('Success', '✅ Product transferred to main inventory successfully!', 'success');
       
       fetchManufacturingOrders();
       
     } catch (error: any) {
       console.error('Error transferring to inventory:', error);
-      alertFunction('Error transferring to inventory. Please try again.');
+      showAlert('Error', 'Error transferring to inventory. Please try again.', 'error');
     }
   };
 
@@ -1293,27 +1393,73 @@ const Manufacturing: React.FC = () => {
             {assignmentEmployees.length > 0 && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Employee Earnings (ETB)
+                  Payment Details
                 </label>
                 {assignmentEmployees.map((employeeId) => {
                   const employee = employees.find(emp => emp.id === employeeId);
+                  const payment = employeePayments[employeeId] || {
+                    measurementType: 'piece',
+                    quantity: '0',
+                    unitPrice: '0',
+                    totalPayment: 0
+                  };
+                  
                   return (
-                    <div key={employeeId} className="flex items-center space-x-2 mb-2">
-                      <span className="text-sm text-gray-700 w-32">
+                    <div key={employeeId} className="border border-gray-200 rounded-lg p-3 mb-3">
+                      <div className="text-sm font-medium text-gray-700 mb-2">
                         {employee?.full_name}
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={employeeEarnings[employeeId] || ''}
-                        onChange={(e) => setEmployeeEarnings({
-                          ...employeeEarnings,
-                          [employeeId]: e.target.value
-                        })}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Measurement Type</label>
+                          <select
+                            value={payment.measurementType}
+                            onChange={(e) => updateEmployeePayment(employeeId, 'measurementType', e.target.value)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="piece">Per Piece</option>
+                            <option value="m2">Per m²</option>
+                            <option value="day">Per Day</option>
+                            <option value="month">Per Month</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Quantity</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0"
+                            value={payment.quantity}
+                            onChange={(e) => updateEmployeePayment(employeeId, 'quantity', e.target.value)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="mb-2">
+                        <label className="block text-xs text-gray-600 mb-1">Unit Price (ETB)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={payment.unitPrice}
+                          onChange={(e) => updateEmployeePayment(employeeId, 'unitPrice', e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div className="bg-gray-50 rounded p-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-600">Total Payment:</span>
+                          <span className="text-sm font-bold text-green-600">
+                            ETB {payment.totalPayment.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -1326,6 +1472,7 @@ const Manufacturing: React.FC = () => {
                   setAssignEmployeeModal({ isOpen: false, order: null });
                   setAssignmentEmployees([]);
                   setEmployeeEarnings({});
+                  setEmployeePayments({});
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
