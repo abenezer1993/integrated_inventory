@@ -11,6 +11,7 @@ interface Sale {
   product_id: string | null;
   manufactured_product_id: string | null;
   branch_id: string | null;
+  branch_name: string;
   quantity_sold: number;
   unit_price: number;
   total_amount: number;
@@ -90,6 +91,20 @@ const Sales: React.FC = () => {
   };
 
   useEffect(() => {
+    // Handle URL parameters for branch filtering
+    const urlParams = new URLSearchParams(window.location.search);
+    const branchId = urlParams.get('branch');
+    
+    if (branchId) {
+      console.log('Branch ID from URL:', branchId);
+      setFormData(prev => ({
+        ...prev,
+        branch_id: branchId
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
     // Load inventory first, then products (products depend on inventory)
     const initializeData = async () => {
       await fetchInventory();
@@ -158,16 +173,33 @@ const Sales: React.FC = () => {
       setLoading(true);
       const offset = (page - 1) * SALES_PER_PAGE;
       
-      // Fetch paginated sales
-      const { data: salesData, error: salesError } = await supabase!
-        .rpc('get_sales_paginated', { 
-          page_limit: SALES_PER_PAGE, 
-          page_offset: offset 
-        });
+      // Fetch paginated sales with branch data
+      let query = supabase!
+        .from('sales')
+        .select(`
+          *,
+          branches (name),
+          products (name, sku, unit),
+          manufactured_products (name, sku, unit)
+        `)
+        .order('created_at', { ascending: false });
+      
+      // Apply branch filter if user is not admin
+      if (user?.role !== 'admin' && user?.branch_id) {
+        query = query.eq('branch_id', user.branch_id);
+      }
+      
+      // Apply pagination
+      query = query.range(offset, offset + SALES_PER_PAGE - 1);
+      
+      const { data: salesData, error: salesError } = await query;
       
       // Fetch total count
-      const { data: countData, error: countError } = await supabase!
-        .rpc('get_sales_count');
+      let countQuery = supabase!.from('sales').select('id', { count: 'exact', head: true });
+      if (user?.role !== 'admin' && user?.branch_id) {
+        countQuery = countQuery.eq('branch_id', user.branch_id);
+      }
+      const { count, error: countError } = await countQuery;
       
       if (salesError || countError) {
         console.error('Sales fetch error:', salesError || countError);
@@ -175,9 +207,38 @@ const Sales: React.FC = () => {
         setTotalSales(0);
         setTotalPages(1);
       } else {
-        setSales(salesData || []);
-        setTotalSales(countData || 0);
-        setTotalPages(Math.ceil((countData || 0) / SALES_PER_PAGE));
+        // Process the data to match the Sale interface
+        const processedSales = salesData?.map((sale: any) => {
+          let productName = '';
+          let productSku = '';
+          let productUnit = '';
+          let isManufactured = false;
+          
+          if (sale.product_id && sale.products) {
+            productName = sale.products.name || 'Unknown Product';
+            productSku = sale.products.sku || 'No SKU';
+            productUnit = sale.products.unit || 'piece';
+            isManufactured = false;
+          } else if (sale.manufactured_product_id && sale.manufactured_products) {
+            productName = sale.manufactured_products.name || 'Manufactured Product';
+            productSku = sale.manufactured_products.sku || 'No SKU';
+            productUnit = sale.manufactured_products.unit || 'piece';
+            isManufactured = true;
+          }
+          
+          return {
+            ...sale,
+            branch_name: sale.branches?.name || 'Unknown Branch',
+            product_name: productName,
+            product_sku: productSku,
+            product_unit: productUnit,
+            is_manufactured: isManufactured
+          };
+        }) || [];
+        
+        setSales(processedSales);
+        setTotalSales(count || 0);
+        setTotalPages(Math.ceil((count || 0) / SALES_PER_PAGE));
         setCurrentPage(page);
       }
     } catch (error) {
@@ -1109,66 +1170,72 @@ const Sales: React.FC = () => {
       )}
 
       {/* Sales Table */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+      <div className="bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-700">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-700 font-mono text-xs">
+            <thead className="bg-gray-800 border-b border-gray-600">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
+                <th className="px-4 py-2 text-left text-xs font-bold text-green-400 uppercase tracking-wider">
+                  DATE
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product
+                <th className="px-4 py-2 text-left text-xs font-bold text-green-400 uppercase tracking-wider">
+                  BRANCH
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
+                <th className="px-4 py-2 text-left text-xs font-bold text-green-400 uppercase tracking-wider">
+                  PRODUCT
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
+                <th className="px-4 py-2 text-left text-xs font-bold text-green-400 uppercase tracking-wider">
+                  CUSTOMER
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                <th className="px-4 py-2 text-left text-xs font-bold text-green-400 uppercase tracking-wider">
+                  AMOUNT
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-bold text-green-400 uppercase tracking-wider">
+                  ACTIONS
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-black divide-y divide-gray-700">
               {sales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <tr key={sale.id} className="hover:bg-gray-800 border-l-2 border-transparent hover:border-green-400 transition-all">
+                  <td className="px-4 py-2 whitespace-nowrap text-xs text-green-300">
                     {new Date(sale.sale_date).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-2 whitespace-nowrap text-xs text-green-300">
+                    {sale.branch_name || 'UNKNOWN'}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {sale.product_name || 'Unknown Product'}
+                      <div className="text-xs font-medium text-green-300">
+                        {sale.product_name || 'UNKNOWN PRODUCT'}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {sale.product_sku || 'No SKU'}
+                      <div className="text-xs text-gray-400">
+                        SKU: {sale.product_sku || 'N/A'}
                       </div>
                       {sale.is_manufactured && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          Manufactured
+                        <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-yellow-900 text-yellow-300 border border-yellow-600">
+                          [MFG]
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {sale.customer_name || 'Walk-in Customer'}
+                  <td className="px-4 py-2 whitespace-nowrap text-xs text-green-300">
+                    {sale.customer_name || 'WALK-IN'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-4 py-2 whitespace-nowrap text-xs font-bold text-green-400">
                     ${sale.total_amount.toFixed(2)} ETB
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div className="flex space-x-2">
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    <div className="flex space-x-1">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSaleRowClick(sale);
                         }}
-                        className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded"
-                        title="View sale"
+                        className="text-cyan-400 hover:text-cyan-300 p-1 hover:bg-gray-800 rounded border border-cyan-600 hover:border-cyan-400 transition-all"
+                        title="VIEW DETAILS"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
@@ -1179,10 +1246,10 @@ const Sales: React.FC = () => {
                             e.stopPropagation();
                             handleEditSale(sale);
                           }}
-                          className="text-green-600 hover:text-green-900 p-1 hover:bg-green-50 rounded"
-                          title="Edit sale"
+                          className="text-green-400 hover:text-green-300 p-1 hover:bg-gray-800 rounded border border-green-600 hover:border-green-400 transition-all"
+                          title="EDIT SALE"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
@@ -1193,7 +1260,7 @@ const Sales: React.FC = () => {
                             e.stopPropagation();
                             handleDeleteSale(sale);
                           }}
-                          className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded"
+                          className="text-red-400 hover:text-red-300 p-1 hover:bg-gray-800 rounded border border-red-600 hover:border-red-400 transition-all"
                           title="Delete sale"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

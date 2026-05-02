@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { alertFunction } from '../utils/alerts';
-import { useAuth } from '../contexts/AuthContext-debug';
 import { useSupabase } from '../contexts/SupabaseContext';
-import { useConfirmation } from '../utils/confirmations';
 
 interface Branch {
   id: string;
@@ -12,8 +9,6 @@ interface Branch {
   phone: string;
   email: string;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
 }
 
 interface BranchAnalytics {
@@ -21,24 +16,32 @@ interface BranchAnalytics {
   branchName: string;
   totalInventory: number;
   totalProducts: number;
-  totalSales: number;
-  todaySales: number;
-  totalSalesAmount: number;
   lowStockItems: number;
+  totalSales: number;
+  totalSalesAmount: number;
+  todaySales: number;
   recentSales: number;
-  topProducts: any[];
 }
 
 const Branches: React.FC = () => {
   const { supabase } = useSupabase();
-  const { user } = useAuth();
-  const { showConfirmation } = useConfirmation();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchAnalytics, setBranchAnalytics] = useState<BranchAnalytics[]>([]);
   const [loading, setLoading] = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [showBranchDetail, setShowBranchDetail] = useState(false);
+  const [showBranchInventory, setShowBranchInventory] = useState(false);
+  const [showBranchSales, setShowBranchSales] = useState(false);
+  const [showBranchEmployees, setShowBranchEmployees] = useState(false);
+  const [branchInventory, setBranchInventory] = useState<any[]>([]);
+  const [branchSales, setBranchSales] = useState<any[]>([]);
+  const [branchEmployees, setBranchEmployees] = useState<any[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState<BranchAnalytics | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -48,14 +51,148 @@ const Branches: React.FC = () => {
     email: '',
     is_active: true
   });
-  const [selectedBranch, setSelectedBranch] = useState<BranchAnalytics | null>(null);
-  const [showBranchDetail, setShowBranchDetail] = useState(false);
 
   const handleBranchClick = (branchId: string, branchName: string) => {
     const branchData = branchAnalytics.find(b => b.branchId === branchId);
     if (branchData) {
       setSelectedBranch(branchData);
       setShowBranchDetail(true);
+      setShowBranchInventory(false);
+    }
+  };
+
+  const fetchBranchInventory = async (branchId: string) => {
+    try {
+      setInventoryLoading(true);
+      
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+      
+      const [
+        { data: inventoryData, error: inventoryError },
+        { data: manufacturingOrdersData, error: manufacturingOrdersError }
+      ] = await Promise.all([
+        supabase
+          .from('inventory')
+          .select(`
+            *,
+            products (id, name, sku, unit, cost_price, selling_price),
+            branches (name)
+          `)
+          .eq('branch_id', branchId)
+          .order('last_updated', { ascending: false }),
+        supabase
+          .from('manufacturing_orders')
+          .select('*')
+      ]);
+      
+      if (inventoryError) throw inventoryError;
+      
+      const processedData = inventoryData?.map(item => {
+        let productName = '';
+        let displaySku = '';
+        let source = '';
+        
+        if (item.product_id && item.products) {
+          source = 'purchased';
+          productName = item.products.name || 'Unknown';
+          displaySku = item.products.sku || 'N/A';
+        } else if (item.manufactured_product_id && !item.product_id) {
+          source = 'manufactured';
+          
+          const manufacturingOrder = manufacturingOrdersData?.find(order => 
+            order.finished_product_id === item.manufactured_product_id && 
+            order.status === 'completed'
+          );
+          
+          if (manufacturingOrder) {
+            productName = manufacturingOrder.product_name || 'Manufactured Product';
+            displaySku = manufacturingOrder.order_number || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+          } else {
+            productName = 'Manufactured Product';
+            displaySku = 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+          }
+        } else {
+          source = 'unknown';
+          productName = 'Unknown Product';
+          displaySku = 'N/A';
+        }
+        
+        return {
+          ...item,
+          productName,
+          displaySku,
+          source,
+          unit: item.products?.unit || 'piece'
+        };
+      }) || [];
+      
+      setBranchInventory(processedData);
+    } catch (error) {
+      console.error('Error fetching branch inventory:', error);
+      setBranchInventory([]);
+    } finally {
+      setInventoryLoading(false);
+    }
+  };
+
+  const fetchBranchSales = async (branchId: string) => {
+    try {
+      setSalesLoading(true);
+      
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+      
+      const { data: salesData, error: salesError } = await supabase
+        .from('sales')
+        .select(`
+          *,
+          products (name, sku),
+          customers (name),
+          branches (name)
+        `)
+        .eq('branch_id', branchId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (salesError) throw salesError;
+      
+      setBranchSales(salesData || []);
+    } catch (error) {
+      console.error('Error fetching branch sales:', error);
+      setBranchSales([]);
+    } finally {
+      setSalesLoading(false);
+    }
+  };
+
+  const fetchBranchEmployees = async (branchId: string) => {
+    try {
+      setEmployeesLoading(true);
+      
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+      
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('employees')
+        .select(`
+          *,
+          branches (name)
+        `)
+        .eq('branch_id', branchId)
+        .order('created_at', { ascending: false });
+      
+      if (employeesError) throw employeesError;
+      
+      setBranchEmployees(employeesData || []);
+    } catch (error) {
+      console.error('Error fetching branch employees:', error);
+      setBranchEmployees([]);
+    } finally {
+      setEmployeesLoading(false);
     }
   };
 
@@ -64,23 +201,22 @@ const Branches: React.FC = () => {
       console.log('Fetching branches...');
       setLoading(true);
       
-      const { data, error } = await supabase!
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+      
+      const { data, error } = await supabase
         .from('branches')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100); // Add limit to prevent large data issues
-
-      if (error) {
-        console.error('Fetch error:', error);
-        setBranches([]);
-        return;
-      }
-
-      console.log('Branches fetched:', data?.length || 0, 'items');
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      console.log('Branches fetched:', data);
+      console.log('Number of branches:', data?.length || 0);
+      console.log('Active branches:', data?.filter(b => b.is_active).length || 0);
       setBranches(data || []);
     } catch (error) {
       console.error('Error fetching branches:', error);
-      setBranches([]);
     } finally {
       setLoading(false);
     }
@@ -88,161 +224,176 @@ const Branches: React.FC = () => {
 
   const fetchBranchAnalytics = async () => {
     try {
+      console.log('Fetching branch analytics...');
       setAnalyticsLoading(true);
       
-      const { data: branchesData, error: branchError } = await supabase!
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+      
+      // Test queries to see what data exists
+      const { data: allInventory, error: inventoryError } = await supabase
+        .from('inventory')
+        .select('branch_id, quantity')
+        .limit(5);
+      
+      console.log('Sample inventory data:', allInventory, 'Error:', inventoryError);
+      
+      const { data: allSales, error: salesError } = await supabase
+        .from('sales')
+        .select('branch_id, quantity_sold, total_amount')
+        .limit(5);
+      
+      console.log('Sample sales data:', allSales, 'Error:', salesError);
+      
+      const { data: branchesData, error: branchesError } = await supabase
         .from('branches')
         .select('id, name')
-        .eq('is_active', true);
+        .order('name');
       
-      if (branchError) {
-        console.error('Branch fetch error:', branchError);
-        setBranchAnalytics([]);
-        return;
-      }
+      if (branchesError) throw branchesError;
       
       if (!branchesData || branchesData.length === 0) {
+        console.log('No branches found');
         setBranchAnalytics([]);
         return;
       }
       
-      const branchIds = branchesData.map(b => b.id);
-      const today = new Date().toISOString().split('T')[0];
+      console.log('Processing analytics for branches:', branchesData);
       
-      // Fetch all data at once - NO N+1 queries!
-      const [
-        { data: allInventory, error: inventoryError },
-        { data: allSales, error: salesError }
-      ] = await Promise.all([
-        supabase!
-          .from('inventory')
-          .select('branch_id, quantity, product_id, manufactured_product_id')
-          .in('branch_id', branchIds),
-        supabase!
-          .from('sales')
-          .select('branch_id, quantity_sold, total_amount, sale_date')
-          .in('branch_id', branchIds)
-      ]);
-      
-      // Process data efficiently - NO database calls in loop!
-      const analytics: BranchAnalytics[] = branchesData.map(branch => {
-        // Filter inventory for this branch
-        const branchInventory = (allInventory || []).filter(item => item.branch_id === branch.id);
-        
-        // Calculate inventory metrics
-        const totalInventory = branchInventory.reduce((sum, item) => sum + (item.quantity || 0), 0);
-        
-        // Count unique products
-        const uniqueProducts = new Set();
-        branchInventory.forEach(item => {
-          if (item.product_id) uniqueProducts.add(item.product_id);
-          if (item.manufactured_product_id) uniqueProducts.add(item.manufactured_product_id);
-        });
-        const totalProducts = uniqueProducts.size;
-        
-        // Filter sales for this branch
-        const branchSales = (allSales || []).filter(sale => sale.branch_id === branch.id);
-        
-        // Calculate sales metrics
-        let totalSales = 0;
-        let totalSalesAmount = 0;
-        let todaySales = 0;
-        
-        branchSales.forEach(sale => {
-          totalSales += sale.quantity_sold || 0;
-          totalSalesAmount += sale.total_amount || 0;
-          
-          // Check if sale is from today
-          const saleDate = new Date(sale.sale_date).toISOString().split('T')[0];
-          if (saleDate === today) {
-            todaySales += sale.quantity_sold || 0;
+      const analyticsPromises = branchesData.map(async (branch) => {
+        try {
+          if (!supabase) {
+            throw new Error('Supabase client not available');
           }
-        });
-        
-        return {
-          branchId: branch.id,
-          branchName: branch.name,
-          totalInventory,
-          totalProducts,
-          totalSales,
-          todaySales,
-          totalSalesAmount,
-          lowStockItems: 0,
-          recentSales: 0,
-          topProducts: []
-        };
+          
+          console.log(`Fetching analytics for branch ${branch.name} (ID: ${branch.id})`);
+          
+          const { data: inventoryData, error: inventoryError } = await supabase
+            .from('inventory')
+            .select(`
+              quantity,
+              product_id,
+              manufactured_product_id,
+              last_updated
+            `)
+            .eq('branch_id', branch.id);
+          
+          console.log(`Inventory data for ${branch.name}:`, inventoryData, 'Error:', inventoryError);
+          
+          if (inventoryError) throw inventoryError;
+          
+          const { data: salesData, error: salesError } = await supabase
+            .from('sales')
+            .select('quantity_sold, total_amount, created_at')
+            .eq('branch_id', branch.id);
+          
+          console.log(`Sales data for ${branch.name}:`, salesData, 'Error:', salesError);
+          
+          if (salesError) throw salesError;
+          
+          const totalInventory = inventoryData?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+          const totalProducts = new Set(
+            inventoryData?.map(item => item.product_id || item.manufactured_product_id).filter(Boolean)
+          ).size;
+          
+          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity_sold || 0), 0) || 0;
+          const totalSalesAmount = salesData?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
+          
+          const today = new Date().toISOString().split('T')[0];
+          const todaySales = salesData?.filter(sale => sale.created_at?.startsWith(today))
+            .reduce((sum, sale) => sum + (sale.quantity_sold || 0), 0) || 0;
+          
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          const recentSales = salesData?.filter(sale => 
+            new Date(sale.created_at || '') >= sevenDaysAgo
+          ).reduce((sum, sale) => sum + (sale.quantity_sold || 0), 0) || 0;
+          
+          const lowStockItems = inventoryData?.filter(item => (item.quantity || 0) < 10).length || 0;
+          
+          const result = {
+            branchId: branch.id,
+            branchName: branch.name,
+            totalInventory,
+            totalProducts,
+            lowStockItems,
+            totalSales,
+            totalSalesAmount,
+            todaySales,
+            recentSales
+          };
+          
+          console.log(`Analytics result for ${branch.name}:`, result);
+          
+          return result;
+        } catch (error) {
+          console.error(`Error fetching analytics for branch ${branch.name}:`, error);
+          return {
+            branchId: branch.id,
+            branchName: branch.name,
+            totalInventory: 0,
+            totalProducts: 0,
+            lowStockItems: 0,
+            totalSales: 0,
+            totalSalesAmount: 0,
+            todaySales: 0,
+            recentSales: 0
+          };
+        }
       });
       
-      setBranchAnalytics(analytics);
+      const analyticsResults = await Promise.all(analyticsPromises);
+      console.log('Branch analytics results:', analyticsResults);
+      console.log('Number of analytics results:', analyticsResults.length);
+      setBranchAnalytics(analyticsResults);
+      console.log('branchAnalytics state set');
     } catch (error) {
       console.error('Error fetching branch analytics:', error);
-      setBranchAnalytics([]);
     } finally {
       setAnalyticsLoading(false);
     }
   };
 
   useEffect(() => {
-    const initializeData = async () => {
-      await fetchBranches();
-      await fetchBranchAnalytics();
-    };
-    initializeData();
+    fetchBranches();
+    fetchBranchAnalytics();
   }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
 
   const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Prevent duplicate submissions
-    if (isSubmitting) {
-      console.log('Already submitting, ignoring...');
-      return;
-    }
-    
     setIsSubmitting(true);
     
     try {
-      console.log('Adding branch:', formData);
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
       
       if (editingBranch) {
-        // Update existing branch
-        const { data, error } = await supabase!
+        const { error } = await supabase
           .from('branches')
-          .update({
-            name: formData.name,
-            location: formData.location,
-            contact_person: formData.contact_person,
-            phone: formData.phone,
-            email: formData.email,
-            is_active: formData.is_active,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingBranch.id)
-          .select()
-          .single();
-
+          .update(formData)
+          .eq('id', editingBranch.id);
+        
         if (error) throw error;
-        console.log('Branch updated successfully:', data);
       } else {
-        // Add new branch
-        const { data, error } = await supabase!
+        const { error } = await supabase
           .from('branches')
-          .insert({
-            name: formData.name,
-            location: formData.location,
-            contact_person: formData.contact_person,
-            phone: formData.phone,
-            email: formData.email,
-            is_active: formData.is_active
-          })
-          .select()
-          .single();
-
+          .insert(formData);
+        
         if (error) throw error;
-        console.log('Branch added successfully:', data);
       }
-
-      // Reset form and refresh data
+      
+      setShowAddForm(false);
+      setEditingBranch(null);
       setFormData({
         name: '',
         location: '',
@@ -251,18 +402,9 @@ const Branches: React.FC = () => {
         email: '',
         is_active: true
       });
-      setShowAddForm(false);
-      setEditingBranch(null);
-      
-      // Refresh data immediately
-      await fetchBranches();
-      await fetchBranchAnalytics();
-      
-      console.log(editingBranch ? 'Branch updated successfully!' : 'Branch added successfully!');
+      fetchBranches();
     } catch (error) {
       console.error('Error saving branch:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`Error saving branch: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -281,101 +423,25 @@ const Branches: React.FC = () => {
     setShowAddForm(true);
   };
 
-  const handleDelete = async (branchId: string) => {
-    const performDelete = async () => {
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this branch?')) {
       try {
-        console.log('Deleting branch:', branchId);
-        
-        // Check for related records first
-        const { data: inventoryData } = await supabase!
-          .from('inventory')
-          .select('id')
-          .eq('branch_id', branchId)
-          .limit(1);
-        
-        const { data: salesData } = await supabase!
-          .from('sales')
-          .select('id')
-          .eq('branch_id', branchId)
-          .limit(1);
-        
-        const { data: employeeData } = await supabase!
-          .from('employees')
-          .select('id')
-          .eq('branch_id', branchId)
-          .limit(1);
-        
-        const { data: orderData } = await supabase!
-          .from('manufacturing_orders')
-          .select('id')
-          .eq('branch_id', branchId)
-          .limit(1);
-
-        console.log('Related records check:', {
-          inventory: inventoryData?.length || 0,
-          sales: salesData?.length || 0,
-          employees: employeeData?.length || 0,
-          orders: orderData?.length || 0
-        });
-
-        // If there are related records, warn user
-        if ((inventoryData?.length || 0) > 0 || (salesData?.length || 0) > 0 || 
-            (employeeData?.length || 0) > 0 || (orderData?.length || 0) > 0) {
-          console.error('Cannot delete branch - has related records');
-          console.error('Cannot delete branch: It has related records (inventory, sales, employees, or orders). Please delete or reassign these records first.');
-          return;
+        if (!supabase) {
+          throw new Error('Supabase client not available');
         }
-
-        // Delete the branch
-        const { error } = await supabase!
+        
+        const { error } = await supabase
           .from('branches')
           .delete()
-          .eq('id', branchId);
-
-        console.log('Delete result:', { error });
-
-        if (error) {
-          console.error('Delete error:', error);
-          throw error;
-        }
-
-        console.log('Branch deleted successfully');
-        console.log('Branch deleted successfully!');
-        fetchBranches();
-        fetchBranchAnalytics();
+          .eq('id', id);
         
-      } catch (error: any) {
+        if (error) throw error;
+        fetchBranches();
+      } catch (error) {
         console.error('Error deleting branch:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-        console.error(`Error deleting branch: ${errorMessage}`);
       }
-    };
-
-    showConfirmation({
-      title: 'Delete Branch',
-      message: 'Are you sure you want to delete this branch? This action cannot be undone.',
-      onConfirm: performDelete,
-      type: 'danger',
-      confirmText: 'Delete',
-      cancelText: 'Cancel'
-    });
+    }
   };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
-    }));
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -386,61 +452,46 @@ const Branches: React.FC = () => {
         </div>
         <div className="flex space-x-2">
           <button
-            onClick={() => fetchBranches()}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg"
-            title="Refresh branches"
+            onClick={() => setShowAddForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            🔄 Refresh
-          </button>
-          <button
-            onClick={() => {
-              setEditingBranch(null);
-              setFormData({
-                name: '',
-                location: '',
-                contact_person: '',
-                phone: '',
-                email: '',
-                is_active: true
-              });
-              setShowAddForm(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-          >
-            Add Branch
+            + Add Branch
           </button>
         </div>
       </div>
 
-      {/* Branch Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl shadow-lg p-4">
+      
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center">
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-xl">🏢</span>
+              <span className="text-xl">📍</span>
             </div>
             <div className="ml-3">
               <p className="text-xs font-medium text-gray-600">Total Branches</p>
-              <p className="text-xl font-bold text-gray-900">{branches.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-4">
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-xl">✅</span>
-            </div>
-            <div className="ml-3">
-              <p className="text-xs font-medium text-gray-600">Active</p>
-              <p className="text-xl font-bold text-green-600">
+              <p className="text-xl font-bold text-gray-900">
                 {branches.filter(branch => branch.is_active).length}
               </p>
             </div>
           </div>
         </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-4">
+        
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center">
+            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+              <span className="text-xl">✅</span>
+            </div>
+            <div className="ml-3">
+              <p className="text-xs font-medium text-gray-600">Active Branches</p>
+              <p className="text-xl font-bold text-gray-900">
+                {branches.filter(branch => branch.is_active).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center">
             <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
               <span className="text-xl">⏸️</span>
@@ -525,7 +576,6 @@ const Branches: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Performance Indicator */}
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">Performance</span>
@@ -653,15 +703,15 @@ const Branches: React.FC = () => {
 
       {/* Add/Edit Branch Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3 rounded-t-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                    <span className="text-white text-lg">🏢</span>
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative min-h-screen flex items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 rounded-t-xl">
+                <div>
+                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                    <span className="text-xl">📍</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white">
+                  <h3 className="text-lg font-bold text-white mt-2">
                     {editingBranch ? 'Edit Branch' : 'Add New Branch'}
                   </h3>
                 </div>
@@ -674,126 +724,126 @@ const Branches: React.FC = () => {
                   </svg>
                 </button>
               </div>
+
+              <form onSubmit={handleAddBranch} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Branch Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="e.g., Main Store, Warehouse"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Location <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="location"
+                    value={formData.location}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="e.g., Downtown, Industrial Area"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Contact Person
+                  </label>
+                  <input
+                    type="text"
+                    name="contact_person"
+                    value={formData.contact_person}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="Manager name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Phone
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="555-0101"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="branch@store.com"
+                  />
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    id="is_active"
+                    checked={formData.is_active}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="is_active" className="ml-2 block text-sm font-medium text-gray-900">
+                    🟢 Active Branch
+                  </label>
+                </div>
+
+                <div className="flex space-x-3 pt-3 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all text-sm ${
+                      isSubmitting
+                        ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white'
+                    }`}
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center justify-center">
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {editingBranch ? 'Updating...' : 'Adding...'}
+                      </span>
+                    ) : (
+                      <span>{editingBranch ? 'Update Branch' : 'Add Branch'}</span>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleAddBranch} className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Branch Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="e.g., Main Store, Warehouse"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Location <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="e.g., Downtown, Industrial Area"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Contact Person
-                </label>
-                <input
-                  type="text"
-                  name="contact_person"
-                  value={formData.contact_person}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="Manager name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="555-0101"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="branch@store.com"
-                />
-              </div>
-
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  name="is_active"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="is_active" className="ml-2 block text-sm font-medium text-gray-900">
-                  🟢 Active Branch
-                </label>
-              </div>
-
-              <div className="flex space-x-3 pt-3 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all text-sm ${
-                    isSubmitting
-                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white'
-                  }`}
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center justify-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      {editingBranch ? 'Updating...' : 'Adding...'}
-                    </span>
-                  ) : (
-                    <span>{editingBranch ? 'Update Branch' : 'Add Branch'}</span>
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
@@ -801,9 +851,8 @@ const Branches: React.FC = () => {
       {/* Branch Detail Modal */}
       {showBranchDetail && selectedBranch && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative min-h-screen flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              {/* Header */}
+          <div className="relative min-h-screen flex items-center justify-center p-0">
+            <div className="relative bg-white rounded-xl shadow-2xl w-full h-full max-h-screen overflow-y-auto">
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h3 className="text-xl font-semibold text-gray-900">Branch Details: {selectedBranch.branchName}</h3>
                 <button
@@ -816,10 +865,8 @@ const Branches: React.FC = () => {
                 </button>
               </div>
 
-              {/* Content */}
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left Column - Summary */}
                   <div className="space-y-4">
                     <div className="bg-blue-50 p-4 rounded-lg">
                       <h4 className="text-lg font-semibold text-blue-900 mb-3">Summary</h4>
@@ -862,46 +909,48 @@ const Branches: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right Column - Charts/Actions */}
                   <div className="space-y-4">
                     <div className="bg-purple-50 p-4 rounded-lg">
                       <h4 className="text-lg font-semibold text-purple-900 mb-3">Quick Actions</h4>
                       <div className="space-y-3">
                         <button
                           onClick={() => {
-                            setShowBranchDetail(false);
-                            // Navigate to sales page with this branch pre-selected
-                            window.location.href = `/sales?branch=${selectedBranch.branchId}`;
+                            if (!showBranchSales && selectedBranch) {
+                              fetchBranchSales(selectedBranch.branchId);
+                            }
+                            setShowBranchSales(!showBranchSales);
                           }}
                           className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
                         >
-                          📊 View Sales for this Branch
+                          📊 {showBranchSales ? 'Hide' : 'View'} Sales for this Branch
                         </button>
                         <button
                           onClick={() => {
-                            setShowBranchDetail(false);
-                            // Navigate to inventory page with this branch pre-selected
-                            window.location.href = `/inventory?branch=${selectedBranch.branchId}`;
+                            if (!showBranchInventory && selectedBranch) {
+                              fetchBranchInventory(selectedBranch.branchId);
+                            }
+                            setShowBranchInventory(!showBranchInventory);
                           }}
                           className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
                         >
-                          📦 View Inventory for this Branch
+                          📦 {showBranchInventory ? 'Hide' : 'View'} Inventory for this Branch
                         </button>
                         <button
                           onClick={() => {
-                            setShowBranchDetail(false);
-                            // Navigate to employees page for this branch
-                            window.location.href = `/employees?branch=${selectedBranch.branchId}`;
+                            if (!showBranchEmployees && selectedBranch) {
+                              fetchBranchEmployees(selectedBranch.branchId);
+                            }
+                            setShowBranchEmployees(!showBranchEmployees);
                           }}
                           className="w-full bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
                         >
-                          👥 View Employees for this Branch
+                          👥 {showBranchEmployees ? 'Hide' : 'View'} Employees for this Branch
                         </button>
                       </div>
                     </div>
 
                     <div className="bg-yellow-50 p-4 rounded-lg">
-                      <h4 className="text-lg font-semibold text-yellow-900 mb-3">Performance Indicators</h4>
+                      <h4 className="text-lg font-semibold text-yellow-900 mb-3">Status Indicators</h4>
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <div className="w-3 h-3 bg-green-500 rounded-full"></div>
@@ -921,7 +970,234 @@ const Branches: React.FC = () => {
                 </div>
               </div>
 
-              {/* Footer */}
+              {/* Custom Inventory View */}
+              {showBranchInventory && (
+                <div className="border-t border-gray-200 bg-gray-50">
+                  <div className="p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                      📦 Inventory for {selectedBranch?.branchName}
+                    </h4>
+                    
+                    {inventoryLoading ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">Loading inventory...</div>
+                      </div>
+                    ) : branchInventory.length === 0 ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">No inventory found for this branch</div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Product Name
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                SKU
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Type
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Quantity
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Unit
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Last Updated
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {branchInventory.map((item: any) => {
+                              const isManufactured = item.source === 'manufactured';
+                              
+                              return (
+                                <tr key={item.id} className="hover:bg-gray-50">
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {item.productName || 'Unknown Product'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {item.displaySku || 'N/A'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                      isManufactured 
+                                        ? 'bg-green-100 text-green-800' 
+                                        : 'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      {isManufactured ? 'Manufactured' : 'Purchased'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {item.quantity}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {item.unit || 'piece'}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {new Date(item.last_updated).toLocaleDateString()}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Sales View */}
+              {showBranchSales && (
+                <div className="border-t border-gray-200 bg-gray-50">
+                  <div className="p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                      📊 Sales for {selectedBranch?.branchName}
+                    </h4>
+                    
+                    {salesLoading ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">Loading sales...</div>
+                      </div>
+                    ) : branchSales.length === 0 ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">No sales found for this branch</div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Date
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Customer
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Product
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Quantity
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Total Amount
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {branchSales.map((sale: any) => (
+                              <tr key={sale.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {new Date(sale.created_at).toLocaleDateString()}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  {sale.customers?.name || 'Walk-in Customer'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  {sale.products?.name || 'Unknown Product'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  {sale.quantity_sold}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
+                                  ${sale.total_amount?.toFixed(2) || '0.00'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                    Completed
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Employees View */}
+              {showBranchEmployees && (
+                <div className="border-t border-gray-200 bg-gray-50">
+                  <div className="p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                      👥 Employees for {selectedBranch?.branchName}
+                    </h4>
+                    
+                    {employeesLoading ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">Loading employees...</div>
+                      </div>
+                    ) : branchEmployees.length === 0 ? (
+                      <div className="text-center py-8">
+                        <div className="text-gray-500">No employees found for this branch</div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Name
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Position
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Phone
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status Badge
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {branchEmployees.map((employee: any) => (
+                              <tr key={employee.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                  {employee.full_name}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                  {employee.position || 'Not Assigned'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {employee.phone}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {employee.status || 'Unknown'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                    employee.status === 'active' 
+                                      ? 'bg-green-100 text-green-800' 
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {employee.status || 'Unknown'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end p-6 border-t border-gray-200 bg-gray-50">
                 <button
                   onClick={() => setShowBranchDetail(false)}

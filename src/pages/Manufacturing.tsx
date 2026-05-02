@@ -9,7 +9,7 @@ import ViewOrderModal from '../components/ViewOrderModal';
 import { Product, ManufacturingOrder, ManufacturingExpense } from '../types';
 
 const Manufacturing: React.FC = () => {
-  const { supabase } = useSupabase();
+  const { supabase, supabaseAdmin } = useSupabase();
   const { user, hasPermission } = useAuth();
   const { showConfirmation } = useConfirmation();
   const [manufacturingOrders, setManufacturingOrders] = useState<ManufacturingOrder[]>([]);
@@ -602,11 +602,31 @@ const Manufacturing: React.FC = () => {
   const performTransfer = async (order: any) => {
     try {
       console.log('Transferring to main inventory:', order);
+      console.log('Order details:', {
+        id: order.id,
+        order_number: order.order_number,
+        product_name: order.product_name,
+        quantity_produced: order.quantity_produced,
+        finished_product_id: order.finished_product_id,
+        branch_id: order.branch_id
+      });
       
-      // Create inventory item with basic fields only
+      // Use the existing finished_product_id from manufacturing order
+      console.log('Using existing finished_product_id:', order.finished_product_id);
+      
+      if (!order.finished_product_id) {
+        throw new Error('No finished_product_id found in manufacturing order');
+      }
+      
+      // Create inventory record linking to the existing manufactured product
+      console.log('Creating inventory record...');
+      
       const { data: inventoryData, error: inventoryError } = await supabase!
         .from('inventory')
         .insert({
+          product_id: null, // No regular product for manufactured items
+          manufactured_product_id: order.finished_product_id, // Use existing product
+          branch_id: order.branch_id,
           quantity: order.quantity_produced,
           last_updated: new Date().toISOString()
         })
@@ -619,8 +639,8 @@ const Manufacturing: React.FC = () => {
       }
       
       console.log('✅ Inventory item created successfully:', inventoryData);
-      console.log('✅ Product name stored:', order.product_name);
-      console.log('✅ Product SKU stored:', `MFG-${order.order_number}`);
+      console.log('✅ Product ID:', order.finished_product_id);
+      console.log('✅ Branch ID:', order.branch_id);
       
       // Create stock movement record
       try {
@@ -1148,7 +1168,6 @@ const Manufacturing: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {manufacturingOrders
-                    .filter(order => order.employee_id)
                     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                     .slice(0, 20)
                     .map((order) => {

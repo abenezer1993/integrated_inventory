@@ -110,6 +110,7 @@ const Inventory: React.FC = () => {
   });
   const [products, setProducts] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [inventoryForm, setInventoryForm] = useState({
     product_id: '',
     branch_id: '',
@@ -178,14 +179,35 @@ const Inventory: React.FC = () => {
 
   
   useEffect(() => {
-    fetchInventory();
-    fetchBranches();
-    fetchProducts();
-  }, []);
+    // Handle URL parameters for branch filtering
+    const urlParams = new URLSearchParams(window.location.search);
+    const branchId = urlParams.get('branch');
+    
+    console.log('Current URL:', window.location.search);
+    console.log('Branch ID from URL:', branchId);
+    
+    if (branchId) {
+      console.log('Setting selectedBranch to:', branchId);
+      setSelectedBranch(branchId);
+    } else {
+      console.log('No branch parameter found in URL');
+    }
+    
+    // Only fetch data if user is available or we have a branch from URL
+    if (user || branchId) {
+      fetchInventory();
+      fetchBranches();
+      fetchProducts();
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchInventory();
   }, [pagination.page, pagination.limit]);
+
+  useEffect(() => {
+    fetchInventory();
+  }, [selectedBranch]);
 
   const fetchBranches = async () => {
     try {
@@ -237,9 +259,17 @@ const Inventory: React.FC = () => {
         .from('inventory')
         .select('*', { count: 'exact', head: true });
       
-      // Only filter by branch for non-admin users with valid branch_id
-      if (user?.role !== 'admin' && user?.branch_id) {
+      // Filter by branch if selectedBranch is set (from URL params), otherwise use user's branch
+      console.log('Filtering inventory - selectedBranch:', selectedBranch, 'user role:', user?.role, 'user branch:', user?.branch_id);
+      
+      if (selectedBranch) {
+        console.log('Applying selectedBranch filter:', selectedBranch);
+        countQuery = countQuery.eq('branch_id', selectedBranch);
+      } else if (user?.role !== 'admin' && user?.branch_id) {
+        console.log('Applying user branch filter:', user.branch_id);
         countQuery = countQuery.eq('branch_id', user.branch_id);
+      } else {
+        console.log('No branch filter applied - showing all branches');
       }
       
       const { count: totalCount, error: countError } = await countQuery;
@@ -258,8 +288,10 @@ const Inventory: React.FC = () => {
         `)
         .order('last_updated', { ascending: false });
       
-      // Only filter by branch for non-admin users with valid branch_id
-      if (user?.role !== 'admin' && user?.branch_id) {
+      // Filter by branch if selectedBranch is set (from URL params), otherwise use user's branch
+      if (selectedBranch) {
+        allInventoryQuery = allInventoryQuery.eq('branch_id', selectedBranch);
+      } else if (user?.role !== 'admin' && user?.branch_id) {
         allInventoryQuery = allInventoryQuery.eq('branch_id', user.branch_id);
       }
 
@@ -276,8 +308,10 @@ const Inventory: React.FC = () => {
         .order('last_updated', { ascending: false })
         .range((pagination.page - 1) * pagination.limit, pagination.page * pagination.limit - 1);
       
-      // Only filter by branch for non-admin users with valid branch_id
-      if (user?.role !== 'admin' && user?.branch_id) {
+      // Filter by branch if selectedBranch is set (from URL params), otherwise use user's branch
+      if (selectedBranch) {
+        paginatedQuery = paginatedQuery.eq('branch_id', selectedBranch);
+      } else if (user?.role !== 'admin' && user?.branch_id) {
         paginatedQuery = paginatedQuery.eq('branch_id', user.branch_id);
       }
       

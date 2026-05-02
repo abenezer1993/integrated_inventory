@@ -40,6 +40,7 @@ const Employees: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'employees' | 'departments'>('overview');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
 
   // Form states
   const [formData, setFormData] = useState({
@@ -51,12 +52,25 @@ const Employees: React.FC = () => {
   });
 
   useEffect(() => {
+    // Handle URL parameters for branch filtering
+    const urlParams = new URLSearchParams(window.location.search);
+    const branchId = urlParams.get('branch');
+    
+    if (branchId) {
+      console.log('Branch ID from URL:', branchId);
+      setSelectedBranch(branchId);
+    }
+    
     console.log('Employees component mounted');
     testDatabaseConnection();
     fetchEmployees();
     fetchDepartments();
     fetchBranches();
   }, []);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [selectedBranch]);
 
   const testDatabaseConnection = async () => {
     try {
@@ -99,13 +113,20 @@ const Employees: React.FC = () => {
       }
       
       // If table exists, fetch the data
-      const { data, error } = await supabase!
+      let query = supabase!
         .from('employees')
         .select(`
           *,
           branches!inner(name)
         `)
         .order('created_at', { ascending: false });
+      
+      // Filter by branch if selectedBranch is set (from URL params)
+      if (selectedBranch) {
+        query = query.eq('branch_id', selectedBranch);
+      }
+      
+      const { data, error } = await query;
       
       console.log('Employees fetch response:', { data: data?.length || 0, error });
       
