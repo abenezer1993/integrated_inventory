@@ -1006,7 +1006,7 @@ const Sales: React.FC = () => {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Branch *</label>
                 <select
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                   value={formData.branch_id}
                   onChange={handleInputChange}
                   name="branch_id"
@@ -1024,7 +1024,7 @@ const Sales: React.FC = () => {
                 <input
                   type="text"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                   value={formData.customer_name}
                   onChange={handleInputChange}
                   name="customer_name"
@@ -1036,7 +1036,7 @@ const Sales: React.FC = () => {
                 <input
                   type="date"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                   value={formData.sale_date}
                   onChange={handleInputChange}
                   name="sale_date"
@@ -1065,7 +1065,7 @@ const Sales: React.FC = () => {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Product *</label>
                   <select
                     required={cartItems.length === 0}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                     value={formData.product_id}
                     onChange={handleInputChange}
                     name="product_id"
@@ -1084,7 +1084,7 @@ const Sales: React.FC = () => {
                     type="number"
                     required={cartItems.length === 0}
                     min="1"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                     value={formData.quantity}
                     onChange={handleInputChange}
                     name="quantity"
@@ -1101,7 +1101,7 @@ const Sales: React.FC = () => {
                     type="number"
                     step="0.01"
                     min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                     value={formData.unit_price || getCurrentProduct()?.selling_price || ''}
                     onChange={handleInputChange}
                     name="unit_price"

@@ -1248,7 +1248,7 @@ const Inventory: React.FC = () => {
                   type="number"
                   value={adjustmentQuantity}
                   onChange={(e) => setAdjustmentQuantity(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
                   placeholder="Enter quantity"
                   min="1"
                   required
@@ -1262,7 +1262,7 @@ const Inventory: React.FC = () => {
                 <textarea
                   value={adjustmentNotes}
                   onChange={(e) => setAdjustmentNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 resize-none"
                   rows={2}
                   placeholder="Reason for adjustment..."
                 />
@@ -1331,7 +1331,7 @@ const Inventory: React.FC = () => {
                     // Don't set productSearch on selection to avoid filtering issues
                     setProductSearch('');
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                   required
                 >
                   <option value="">{productSearch && productSearch.trim() ? 'No matching products' : 'Select a product...'}</option>
@@ -1351,7 +1351,7 @@ const Inventory: React.FC = () => {
                   name="branch_id"
                   value={inventoryForm.branch_id}
                   onChange={handleInventoryFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                   required
                 >
                   <option value="">Select a branch</option>
@@ -1372,7 +1372,7 @@ const Inventory: React.FC = () => {
                   name="quantity"
                   value={inventoryForm.quantity}
                   onChange={handleInventoryFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-gray-900"
                   placeholder="Enter initial quantity"
                   min="0"
                   required
@@ -1440,7 +1440,7 @@ const Inventory: React.FC = () => {
                     name="from_branch_id"
                     value={transferForm.from_branch_id}
                     onChange={handleTransferFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm text-gray-900"
                     required
                   >
                     <option value="">Select source branch</option>
@@ -1460,7 +1460,7 @@ const Inventory: React.FC = () => {
                     name="to_branch_id"
                     value={transferForm.to_branch_id}
                     onChange={handleTransferFormChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm text-gray-900"
                     required
                   >
                     <option value="">Select destination branch</option>
@@ -1517,7 +1517,7 @@ const Inventory: React.FC = () => {
                   name="notes"
                   value={transferForm.notes}
                   onChange={handleTransferFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm text-gray-900 resize-none"
                   rows={3}
                   placeholder="Reason for transfer (optional)"
                 />
