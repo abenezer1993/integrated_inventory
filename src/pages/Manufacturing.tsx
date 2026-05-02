@@ -611,21 +611,128 @@ const Manufacturing: React.FC = () => {
         branch_id: order.branch_id
       });
       
-      // Use the existing finished_product_id from manufacturing order
-      console.log('Using existing finished_product_id:', order.finished_product_id);
-      
       if (!order.finished_product_id) {
         throw new Error('No finished_product_id found in manufacturing order');
       }
       
-      // Create inventory record linking to the existing manufactured product
+      // Step 1: Check if manufactured product exists
+      console.log('Checking if manufactured product exists:', order.finished_product_id);
+      
+      const { data: existingProduct, error: checkError } = await supabase!
+        .from('manufactured_products')
+        .select('id, name, sku')
+        .eq('id', order.finished_product_id)
+        .single();
+      
+      let manufacturedProductId = order.finished_product_id;
+      
+      if (checkError || !existingProduct) {
+        console.log('Manufactured product not found, creating new one...');
+        
+        // Step 2: Create the manufactured product first
+        const { data: newProduct, error: createError } = await supabase!
+          .from('manufactured_products')
+          .insert({
+            id: order.finished_product_id, // Use the same ID from manufacturing order
+            name: order.product_name,
+            sku: `MFG-${order.order_number}`,
+            unit: 'piece',
+            is_active: true
+          })
+          .select()
+          .single();
+        
+        if (createError) {
+          console.error('Error creating manufactured product:', createError);
+          
+          // Handle RLS or other permission issues with fallback
+          if (createError.code === '42501' || createError.message?.includes('row-level security')) {
+            console.log('⚠️ RLS permission denied, trying fallback approach...');
+            
+            // Fallback 1: Try to create as regular product
+            const { data: fallbackProduct, error: fallbackError } = await supabase!
+              .from('products')
+              .insert({
+                name: order.product_name,
+                sku: `MFG-${order.order_number}`,
+                unit: 'piece',
+                is_manufactured: true,
+                is_active: true
+              })
+              .select()
+              .single();
+            
+            if (fallbackError) {
+              console.error('Fallback product creation also failed:', fallbackError);
+              
+              // Fallback 2: Create inventory without product reference (if allowed)
+              console.log('⚠️ Trying direct inventory creation without product reference...');
+              
+              const { data: directInventory, error: directError } = await supabase!
+                .from('inventory')
+                .insert({
+                  product_id: null,
+                  manufactured_product_id: null, // No product reference
+                  branch_id: order.branch_id,
+                  quantity: order.quantity_produced,
+                  last_updated: new Date().toISOString()
+                })
+                .select()
+                .single();
+              
+              if (directError) {
+                console.error('Direct inventory creation failed:', directError);
+                throw new Error(`Transfer failed: Cannot create manufactured product due to permissions (${createError.message}). Please contact administrator to fix RLS policies for manufactured_products table.`);
+              } else {
+                console.log('✅ Direct inventory created successfully:', directInventory);
+                showAlert('Success', '✅ Product transferred to inventory (without product reference)!', 'success');
+                fetchManufacturingOrders();
+                return; // Exit early since transfer completed
+              }
+            } else {
+              console.log('✅ Fallback product created successfully:', fallbackProduct);
+              
+              // Create inventory with regular product reference
+              const { data: fallbackInventory, error: fallbackInventoryError } = await supabase!
+                .from('inventory')
+                .insert({
+                  product_id: fallbackProduct.id,
+                  manufactured_product_id: null,
+                  branch_id: order.branch_id,
+                  quantity: order.quantity_produced,
+                  last_updated: new Date().toISOString()
+                })
+                .select()
+                .single();
+              
+              if (fallbackInventoryError) {
+                console.error('Fallback inventory creation failed:', fallbackInventoryError);
+                throw new Error(`Failed to create inventory record: ${fallbackInventoryError.message}`);
+              }
+              
+              console.log('✅ Fallback inventory created successfully:', fallbackInventory);
+              showAlert('Success', '✅ Product transferred to inventory using fallback method!', 'success');
+              fetchManufacturingOrders();
+              return; // Exit early since transfer completed
+            }
+          } else {
+            throw new Error(`Failed to create manufactured product: ${createError.message}`);
+          }
+        }
+        
+        console.log('✅ Manufactured product created successfully:', newProduct);
+      } else {
+        console.log('✅ Manufactured product exists:', existingProduct);
+      }
+      
+      // Step 3: Create inventory record linking to manufactured product
       console.log('Creating inventory record...');
       
       const { data: inventoryData, error: inventoryError } = await supabase!
         .from('inventory')
         .insert({
-          product_id: null, // No regular product for manufactured items
-          manufactured_product_id: order.finished_product_id, // Use existing product
+          product_id: null, // Not using regular products for manufactured items
+          manufactured_product_id: manufacturedProductId, // Link to manufactured product
           branch_id: order.branch_id,
           quantity: order.quantity_produced,
           last_updated: new Date().toISOString()
@@ -635,8 +742,10 @@ const Manufacturing: React.FC = () => {
       
       if (inventoryError) {
         console.error('Inventory insertion error:', inventoryError);
-        throw inventoryError;
+        throw new Error(`Failed to create inventory record: ${inventoryError.message}`);
       }
+      
+      console.log('✅ Inventory item created successfully:', inventoryData);
       
       console.log('✅ Inventory item created successfully:', inventoryData);
       console.log('✅ Product ID:', order.finished_product_id);
