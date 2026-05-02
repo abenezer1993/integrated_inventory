@@ -601,7 +601,7 @@ const Manufacturing: React.FC = () => {
 
   const performTransfer = async (order: any) => {
     try {
-      console.log('Transferring to main inventory:', order);
+      console.log('🚀 Starting transfer process...');
       console.log('Order details:', {
         id: order.id,
         order_number: order.order_number,
@@ -611,45 +611,78 @@ const Manufacturing: React.FC = () => {
         branch_id: order.branch_id
       });
       
-      if (!order.finished_product_id) {
-        throw new Error('No finished_product_id found in manufacturing order');
+      // Validate required fields
+      if (!order.id || !order.order_number || !order.product_name || !order.quantity_produced || !order.branch_id) {
+        console.error('❌ Missing required order fields');
+        throw new Error('Invalid order data: missing required fields');
       }
       
-      // Step 1: Check if manufactured product exists
-      console.log('Checking if manufactured product exists:', order.finished_product_id);
-      
-      const { data: existingProduct, error: checkError } = await supabase!
-        .from('manufactured_products')
-        .select('id, name, sku')
-        .eq('id', order.finished_product_id)
-        .single();
-      
+      // Always use the original finished_product_id from the manufacturing order
+      // This ensures inventory can find the correct manufacturing order for product name
       let manufacturedProductId = order.finished_product_id;
+      let shouldCreateManufacturedProduct = true;
+      let existingProduct: any = null;
       
-      if (checkError || !existingProduct) {
-        console.log('Manufactured product not found, creating new one...');
-        
-        // Step 2: Create the manufactured product first
-        const { data: newProduct, error: createError } = await supabase!
-          .from('manufactured_products')
-          .insert({
-            id: order.finished_product_id, // Use the same ID from manufacturing order
-            name: order.product_name,
-            sku: `MFG-${order.order_number}`,
-            unit: 'piece',
-            is_active: true
-          })
-          .select()
-          .single();
-        
-        if (createError) {
-          console.error('Error creating manufactured product:', createError);
+      console.log('📋 Using original finished_product_id:', manufacturedProductId);
+      
+      // Only create manufactured product if we have a finished_product_id
+      if (manufacturedProductId) {
+        try {
+          console.log('🔍 Checking if manufactured product exists...');
+          const { data: product, error: checkError } = await supabase!
+            .from('manufactured_products')
+            .select('id, name, sku')
+            .eq('id', manufacturedProductId)
+            .single();
           
-          // Handle RLS or other permission issues with fallback
-          if (createError.code === '42501' || createError.message?.includes('row-level security')) {
-            console.log('⚠️ RLS permission denied, trying fallback approach...');
-            
-            // Fallback 1: Try to create as regular product
+          if (!checkError && product) {
+            console.log('✅ Manufactured product exists:', product);
+            existingProduct = product;
+            shouldCreateManufacturedProduct = false;
+          } else {
+            console.log('📝 Will create new manufactured product...');
+          }
+        } catch (checkError) {
+          console.log('⚠️ Product check failed, will create new one:', checkError);
+          shouldCreateManufacturedProduct = true;
+        }
+      } else {
+        console.log('⚠️ No finished_product_id, will use fallback approach...');
+        shouldCreateManufacturedProduct = false;
+      }
+      
+      // Step 2: Create manufactured product if needed
+      let finalProductId = manufacturedProductId;
+      let productType = 'manufactured';
+      
+      if (shouldCreateManufacturedProduct) {
+        console.log('🏭 Creating manufactured product...');
+        
+        try {
+          const { data: newProduct, error: createError } = await supabase!
+            .from('manufactured_products')
+            .insert({
+              id: manufacturedProductId,
+              name: order.product_name,
+              sku: `MFG-${order.order_number}`,
+              unit: 'piece',
+              is_active: true
+            })
+            .select()
+            .single();
+          
+          if (createError) throw createError;
+          
+          console.log('✅ Manufactured product created successfully:', newProduct);
+          finalProductId = manufacturedProductId;
+          productType = 'manufactured';
+          
+        } catch (createError: any) {
+          console.log('⚠️ Manufactured product creation failed, trying fallback:', createError.message);
+          
+          // FALLBACK 1: Create as regular product
+          try {
+            console.log('🔄 Creating as regular product...');
             const { data: fallbackProduct, error: fallbackError } = await supabase!
               .from('products')
               .insert({
@@ -662,41 +695,22 @@ const Manufacturing: React.FC = () => {
               .select()
               .single();
             
-            if (fallbackError) {
-              console.error('Fallback product creation also failed:', fallbackError);
-              
-              // Fallback 2: Create inventory without product reference (if allowed)
-              console.log('⚠️ Trying direct inventory creation without product reference...');
-              
+            if (fallbackError) throw fallbackError;
+            
+            console.log('✅ Regular product created successfully:', fallbackProduct);
+            finalProductId = fallbackProduct.id;
+            productType = 'regular';
+            
+          } catch (fallbackError: any) {
+            console.log('⚠️ Regular product creation failed, trying direct inventory:', fallbackError.message);
+            
+            // FALLBACK 2: Direct inventory without product reference
+            try {
+              console.log('📦 Creating direct inventory record...');
               const { data: directInventory, error: directError } = await supabase!
                 .from('inventory')
                 .insert({
                   product_id: null,
-                  manufactured_product_id: null, // No product reference
-                  branch_id: order.branch_id,
-                  quantity: order.quantity_produced,
-                  last_updated: new Date().toISOString()
-                })
-                .select()
-                .single();
-              
-              if (directError) {
-                console.error('Direct inventory creation failed:', directError);
-                throw new Error(`Transfer failed: Cannot create manufactured product due to permissions (${createError.message}). Please contact administrator to fix RLS policies for manufactured_products table.`);
-              } else {
-                console.log('✅ Direct inventory created successfully:', directInventory);
-                showAlert('Success', '✅ Product transferred to inventory (without product reference)!', 'success');
-                fetchManufacturingOrders();
-                return; // Exit early since transfer completed
-              }
-            } else {
-              console.log('✅ Fallback product created successfully:', fallbackProduct);
-              
-              // Create inventory with regular product reference
-              const { data: fallbackInventory, error: fallbackInventoryError } = await supabase!
-                .from('inventory')
-                .insert({
-                  product_id: fallbackProduct.id,
                   manufactured_product_id: null,
                   branch_id: order.branch_id,
                   quantity: order.quantity_produced,
@@ -705,82 +719,170 @@ const Manufacturing: React.FC = () => {
                 .select()
                 .single();
               
-              if (fallbackInventoryError) {
-                console.error('Fallback inventory creation failed:', fallbackInventoryError);
-                throw new Error(`Failed to create inventory record: ${fallbackInventoryError.message}`);
-              }
+              if (directError) throw directError;
               
-              console.log('✅ Fallback inventory created successfully:', fallbackInventory);
-              showAlert('Success', '✅ Product transferred to inventory using fallback method!', 'success');
+              console.log('✅ Direct inventory created successfully:', directInventory);
+              
+              // Create stock movement
+              await createStockMovement(order, null, 'direct');
+              
+              showAlert('Success', '✅ Product transferred to inventory (direct method)!', 'success');
               fetchManufacturingOrders();
-              return; // Exit early since transfer completed
+              return;
+              
+            } catch (directError: any) {
+              console.error('❌ All methods failed:', directError.message);
+              throw new Error(`Transfer failed: Unable to create product or inventory. Error: ${directError.message}. Please check database permissions.`);
             }
-          } else {
-            throw new Error(`Failed to create manufactured product: ${createError.message}`);
           }
         }
-        
-        console.log('✅ Manufactured product created successfully:', newProduct);
-      } else {
-        console.log('✅ Manufactured product exists:', existingProduct);
+      } else if (existingProduct) {
+        console.log('✅ Using existing manufactured product:', existingProduct);
+        finalProductId = existingProduct.id;
+        productType = 'manufactured';
+      } else if (!manufacturedProductId) {
+        console.log('⚠️ No finished_product_id, using fallback approach...');
+        // Use fallback approach when there's no finished_product_id
+        try {
+          console.log('🔄 Creating as regular product...');
+          const { data: fallbackProduct, error: fallbackError } = await supabase!
+            .from('products')
+            .insert({
+              name: order.product_name,
+              sku: `MFG-${order.order_number}`,
+              unit: 'piece',
+              is_manufactured: true,
+              is_active: true
+            })
+            .select()
+            .single();
+          
+          if (fallbackError) throw fallbackError;
+          
+          console.log('✅ Regular product created successfully:', fallbackProduct);
+          finalProductId = fallbackProduct.id;
+          productType = 'regular';
+          
+        } catch (fallbackError: any) {
+          console.log('⚠️ Regular product creation failed, trying direct inventory:', fallbackError.message);
+          
+          // Direct inventory without product reference
+          try {
+            console.log('📦 Creating direct inventory record...');
+            const { data: directInventory, error: directError } = await supabase!
+              .from('inventory')
+              .insert({
+                product_id: null,
+                manufactured_product_id: null,
+                branch_id: order.branch_id,
+                quantity: order.quantity_produced,
+                last_updated: new Date().toISOString()
+              })
+              .select()
+              .single();
+            
+            if (directError) throw directError;
+            
+            console.log('✅ Direct inventory created successfully:', directInventory);
+            
+            // Create stock movement
+            await createStockMovement(order, null, 'direct');
+            
+            showAlert('Success', '✅ Product transferred to inventory (direct method)!', 'success');
+            fetchManufacturingOrders();
+            return;
+            
+          } catch (directError: any) {
+            console.error('❌ All methods failed:', directError.message);
+            throw new Error(`Transfer failed: Unable to create product or inventory. Error: ${directError.message}. Please check database permissions.`);
+          }
+        }
       }
       
-      // Step 3: Create inventory record linking to manufactured product
-      console.log('Creating inventory record...');
+      // Step 3: Create inventory record
+      console.log('📦 Creating inventory record...');
       
-      const { data: inventoryData, error: inventoryError } = await supabase!
-        .from('inventory')
-        .insert({
-          product_id: null, // Not using regular products for manufactured items
-          manufactured_product_id: manufacturedProductId, // Link to manufactured product
+      try {
+        const inventoryRecord: any = {
           branch_id: order.branch_id,
           quantity: order.quantity_produced,
           last_updated: new Date().toISOString()
-        })
-        .select()
-        .single();
-      
-      if (inventoryError) {
-        console.error('Inventory insertion error:', inventoryError);
-        throw new Error(`Failed to create inventory record: ${inventoryError.message}`);
-      }
-      
-      console.log('✅ Inventory item created successfully:', inventoryData);
-      
-      console.log('✅ Inventory item created successfully:', inventoryData);
-      console.log('✅ Product ID:', order.finished_product_id);
-      console.log('✅ Branch ID:', order.branch_id);
-      
-      // Create stock movement record
-      try {
-        const { data: stockMovement, error: stockMovementError } = await supabase!
-          .from('stock_movements')
-          .insert({
-            movement_number: `TR${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
-            type: 'manufacturing',
-            quantity: order.quantity_produced,
-            notes: `Manufactured product transferred to main inventory: ${order.product_name} - Order: ${order.order_number}`
-          })
+        };
+        
+        // Set appropriate product reference based on type
+        if (productType === 'manufactured') {
+          inventoryRecord.manufactured_product_id = finalProductId;
+          inventoryRecord.product_id = null;
+        } else {
+          // Always use manufactured_product_id for manufacturing transfers
+          // even if we created a regular product as fallback
+          inventoryRecord.manufactured_product_id = finalProductId;
+          inventoryRecord.product_id = null;
+        }
+        
+        const { data: inventoryData, error: inventoryError } = await supabase!
+          .from('inventory')
+          .insert(inventoryRecord)
           .select()
           .single();
         
-        if (stockMovementError) {
-          console.error('Stock movement error:', stockMovementError);
-        } else {
-          console.log('Stock movement created:', stockMovement);
-        }
-      } catch (stockError) {
-        console.log('Stock movement creation failed, but transfer succeeded');
+        if (inventoryError) throw inventoryError;
+        
+        console.log('✅ Inventory item created successfully:', inventoryData);
+        
+        // Create stock movement record
+        await createStockMovement(order, finalProductId, productType);
+        
+        console.log('🎉 Transfer completed successfully!');
+        showAlert('Success', '✅ Product transferred to inventory successfully!', 'success');
+        fetchManufacturingOrders();
+        
+      } catch (inventoryError: any) {
+        console.error('❌ Inventory creation failed:', inventoryError.message);
+        throw new Error(`Failed to create inventory record: ${inventoryError.message}`);
       }
       
-      console.log('✅ Transfer completed successfully!');
-      showAlert('Success', '✅ Product transferred to main inventory successfully!', 'success');
-      
-      fetchManufacturingOrders();
-      
     } catch (error: any) {
-      console.error('Error transferring to inventory:', error);
-      showAlert('Error', 'Error transferring to inventory. Please try again.', 'error');
+      console.error('❌ Transfer failed:', error.message);
+      showAlert('Error', `Transfer failed: ${error.message}`, 'error');
+    }
+  };
+
+  // Helper function to create stock movement
+  const createStockMovement = async (order: any, productId: string | null, type: string) => {
+    try {
+      console.log('📋 Creating stock movement record...');
+      
+      const movementRecord: any = {
+        movement_number: `TR${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+        type: 'manufacturing',
+        quantity: order.quantity_produced,
+        notes: `Manufactured product transferred: ${order.product_name} - Order: ${order.order_number}`,
+        reference_id: order.id,
+        reference_type: 'manufacturing_order'
+      };
+      
+      // Set appropriate product reference
+      if (type === 'manufactured') {
+        movementRecord.manufactured_product_id = productId;
+      } else if (type === 'regular') {
+        movementRecord.product_id = productId;
+      }
+      
+      const { data: stockMovement, error: stockMovementError } = await supabase!
+        .from('stock_movements')
+        .insert(movementRecord)
+        .select()
+        .single();
+      
+      if (stockMovementError) {
+        console.log('⚠️ Stock movement creation failed, but transfer succeeded:', stockMovementError);
+      } else {
+        console.log('✅ Stock movement created:', stockMovement);
+      }
+      
+    } catch (stockError) {
+      console.log('⚠️ Stock movement creation failed, but transfer succeeded:', stockError);
     }
   };
 

@@ -419,35 +419,48 @@ const Inventory: React.FC = () => {
         let displaySku = 'N/A';
         let productInfo = null;
         
+        console.log('🔍 Processing inventory item:', {
+          id: item.id,
+          product_id: item.product_id,
+          manufactured_product_id: item.manufactured_product_id,
+          has_products: !!item.products,
+          product_name: item.products?.name
+        });
+        
         if (item.product_id && item.products) {
           // Use the products data for purchased products
           source = 'purchased';
           productName = item.products.name || 'Unknown';
           displaySku = item.products.sku || 'N/A';
           productInfo = item.products;
+          console.log('✅ Set as purchased:', productName);
         } else if (item.manufactured_product_id && !item.product_id) {
           // For manufactured products, use manufacturing orders data
           source = 'manufactured';
           
           // Find the manufacturing order that matches this manufactured_product_id
           const manufacturingOrder = manufacturingOrdersData?.find(order => 
-            order.finished_product_id === item.manufactured_product_id && 
-            order.status === 'completed'
+            order.finished_product_id === item.manufactured_product_id
           );
           
           if (manufacturingOrder) {
             productName = manufacturingOrder.product_name || 'Manufactured Product';
             displaySku = manufacturingOrder.order_number || 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+            console.log('✅ Set as manufactured (enrichedTotalInventory):', productName);
           } else {
             productName = 'Manufactured Product';
             displaySku = 'MFG-' + item.manufactured_product_id?.slice(0, 8) || 'N/A';
+            console.log('⚠️ Set as manufactured (no order found - enrichedTotalInventory):', productName);
           }
         } else {
           // Handle orphaned items (both null)
           source = 'unknown';
           productName = 'Unknown Product';
           displaySku = 'N/A';
+          console.log('❌ Set as unknown (enrichedTotalInventory):', productName);
         }
+        
+        console.log('📊 Final result (enrichedTotalInventory):', { source, productName, item_id: item.id });
         
         return {
           ...item,
@@ -477,8 +490,7 @@ const Inventory: React.FC = () => {
           
           // Find the manufacturing order that matches this manufactured_product_id
           const manufacturingOrder = manufacturingOrdersData?.find(order => 
-            order.finished_product_id === item.manufactured_product_id && 
-            order.status === 'completed'
+            order.finished_product_id === item.manufactured_product_id
           );
           
           if (manufacturingOrder) {
