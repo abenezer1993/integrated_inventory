@@ -920,9 +920,9 @@ const Branches: React.FC = () => {
                             }
                             setShowBranchSales(!showBranchSales);
                           }}
-                          className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                          className="w-full bg-purple-600 text-white px-2 py-1.5 rounded-lg hover:bg-purple-700 transition-colors text-xs font-medium"
                         >
-                          📊 {showBranchSales ? 'Hide' : 'View'} Sales for this Branch
+                          📊 {showBranchSales ? 'Hide' : 'View'} Sales
                         </button>
                         <button
                           onClick={() => {
@@ -931,9 +931,9 @@ const Branches: React.FC = () => {
                             }
                             setShowBranchInventory(!showBranchInventory);
                           }}
-                          className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                          className="w-full bg-indigo-600 text-white px-2 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors text-xs font-medium"
                         >
-                          📦 {showBranchInventory ? 'Hide' : 'View'} Inventory for this Branch
+                          📦 {showBranchInventory ? 'Hide' : 'View'} Inventory
                         </button>
                         <button
                           onClick={() => {
@@ -942,9 +942,9 @@ const Branches: React.FC = () => {
                             }
                             setShowBranchEmployees(!showBranchEmployees);
                           }}
-                          className="w-full bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+                          className="w-full bg-orange-600 text-white px-2 py-1.5 rounded-lg hover:bg-orange-700 transition-colors text-xs font-medium"
                         >
-                          👥 {showBranchEmployees ? 'Hide' : 'View'} Employees for this Branch
+                          👥 {showBranchEmployees ? 'Hide' : 'View'} Employees
                         </button>
                       </div>
                     </div>
