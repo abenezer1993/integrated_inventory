@@ -42,17 +42,17 @@ const Dashboard: React.FC = () => {
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'Add Material':
-        navigate('/products');
+        navigate('/app/products');
         break;
       case 'Record Sale':
-        navigate('/sales');
+        navigate('/app/sales');
         break;
       case 'Update Inventory':
-        navigate('/inventory');
+        navigate('/app/inventory');
         break;
       case 'View Reports':
         // Navigate to reports or show reports modal
-        alertFunction('Reports feature coming soon!');
+        navigate('/app/reports');
         break;
       default:
         break;
@@ -171,7 +171,7 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  if (loading) {
+    if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -182,51 +182,57 @@ const Dashboard: React.FC = () => {
   const statCards = [
     {
       title: 'Total Inventory',
-      value: stats.totalInventory,
-      icon: '📊',
-      gradient: 'from-green-500 to-green-600',
-      bgColor: 'bg-green-50',
-      textColor: 'text-green-600',
+      value: stats.totalInventory.toLocaleString(),
+      icon: '📦',
+      gradient: 'from-emerald-500 to-teal-600',
+      bgColor: 'bg-emerald-50',
+      textColor: 'text-emerald-700',
+      borderColor: 'border-emerald-200',
     },
     {
       title: 'Total Sales',
       value: `$${stats.totalSales.toFixed(2)}`,
       icon: '💰',
-      gradient: 'from-purple-500 to-purple-600',
-      bgColor: 'bg-purple-50',
-      textColor: 'text-purple-600',
+      gradient: 'from-violet-500 to-purple-600',
+      bgColor: 'bg-violet-50',
+      textColor: 'text-violet-700',
+      borderColor: 'border-violet-200',
     },
     {
       title: 'Low Stock Items',
       value: stats.lowStockItems,
       icon: '⚠️',
-      gradient: 'from-red-500 to-red-600',
+      gradient: 'from-red-500 to-rose-600',
       bgColor: 'bg-red-50',
-      textColor: 'text-red-600',
+      textColor: 'text-rose-700',
+      borderColor: 'border-rose-200',
     },
     {
       title: 'Total Products',
-      value: stats.totalProducts,
-      icon: '📦',
-      gradient: 'from-blue-500 to-blue-600',
+      value: stats.totalProducts.toLocaleString(),
+      icon: '📋',
+      gradient: 'from-blue-500 to-indigo-600',
       bgColor: 'bg-blue-50',
-      textColor: 'text-blue-600',
+      textColor: 'text-blue-700',
+      borderColor: 'border-blue-200',
     },
     {
       title: 'Manufacturing Orders',
       value: stats.totalManufacturingOrders,
       icon: '🏭',
-      gradient: 'from-orange-500 to-orange-600',
-      bgColor: 'bg-orange-50',
-      textColor: 'text-orange-600',
+      gradient: 'from-amber-500 to-orange-600',
+      bgColor: 'bg-amber-50',
+      textColor: 'text-amber-700',
+      borderColor: 'border-amber-200',
     },
     {
       title: 'Today\'s Sales',
       value: `$${stats.todaySales.toFixed(2)}`,
       icon: '📈',
-      gradient: 'from-cyan-500 to-cyan-600',
+      gradient: 'from-cyan-500 to-sky-600',
       bgColor: 'bg-cyan-50',
-      textColor: 'text-cyan-600',
+      textColor: 'text-cyan-700',
+      borderColor: 'border-cyan-200',
     },
   ];
 
@@ -238,131 +244,144 @@ const Dashboard: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-8">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-xl">
-        <h1 className="text-3xl font-bold mb-2">Welcome to Inventory Pro</h1>
-        <p className="text-blue-100 text-lg">Manage your inventory with ease and efficiency</p>
-        <div className="mt-6 flex items-center space-x-4">
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-            <span className="text-sm">Today</span>
-            <p className="font-semibold">{new Date().toLocaleDateString()}</p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-            <span className="text-sm">System Status</span>
-            <p className="font-semibold">🟢 Online</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-        {statCards.map((stat, index) => (
-          <div key={index} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
-            <div className={`h-2 bg-gradient-to-r ${stat.gradient}`}></div>
-            <div className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">{stat.title}</p>
-                  <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Section */}
+        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 rounded-2xl p-8 text-white shadow-2xl backdrop-blur-sm border border-white/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold mb-2 tracking-tight">Inventory Dashboard</h1>
+              <p className="text-indigo-100 text-lg font-medium">Real-time inventory management system</p>
+            </div>
+            <div className="flex items-center space-x-6">
+              <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 border border-white/30">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-indigo-100">Today</p>
+                  <p className="text-xl font-bold">{new Date().toLocaleDateString()}</p>
                 </div>
-                <div className={`w-12 h-12 ${stat.bgColor} rounded-full flex items-center justify-center`}>
-                  <span className="text-2xl">{stat.icon}</span>
+              </div>
+              <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 border border-white/30">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-indigo-100">System</p>
+                  <p className="text-xl font-bold flex items-center justify-center">
+                    <span className="w-3 h-3 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+                    Online
+                  </p>
                 </div>
               </div>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Activities */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Recent Activities</h2>
-            <button 
-              onClick={handleViewAllActivities}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-            >
-              View all →
-            </button>
-          </div>
-          <div className="space-y-4">
-            {recentActivities.length > 0 ? (
-              recentActivities.map((activity, index) => (
-                <div key={activity.id} className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className={`w-10 h-10 ${activity.color} bg-opacity-10 rounded-full flex items-center justify-center`}>
-                    <span className={activity.color}>{activity.icon}</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{activity.action}</p>
-                    <p className="text-sm text-gray-500">{activity.time}</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No recent activities</p>
+    {/* Stats Cards */}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      {statCards.map((stat, index) => (
+        <div key={index} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-200">
+          <div className={`h-2 bg-gradient-to-r ${stat.gradient}`}></div>
+          <div className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">{stat.title}</p>
+                <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
               </div>
-            )}
+              <div className={`w-12 h-12 ${stat.bgColor} rounded-full flex items-center justify-center shadow-lg`}>
+                <span className="text-2xl">{stat.icon}</span>
+              </div>
+            </div>
           </div>
         </div>
+      ))}
+    </div>
 
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Quick Actions</h2>
-            <span className="text-sm text-gray-500">Shortcuts</span>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {quickActions.map((action, index) => (
-              <button
-                key={index}
-                onClick={() => handleQuickAction(action.name)}
-                className={`${action.color} text-white p-4 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg`}
-              >
-                <div className="flex flex-col items-center space-y-2">
-                  <span className="text-2xl">{action.icon}</span>
-                  <span className="font-medium">{action.name}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Performance Overview */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Recent Activities */}
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-6">Performance Overview</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center p-6 bg-blue-50 rounded-lg">
-            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl text-white">📈</span>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-gray-900">Recent Activities</h2>
+          <button 
+            onClick={handleViewAllActivities}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            View all →
+          </button>
+        </div>
+        <div className="space-y-4">
+          {recentActivities.length > 0 ? (
+            recentActivities.map((activity, index) => (
+              <div key={activity.id} className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                <div className={`w-10 h-10 ${activity.color} bg-opacity-10 rounded-full flex items-center justify-center`}>
+                  <span className={activity.color}>{activity.icon}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">{activity.action}</p>
+                  <p className="text-sm text-gray-500">{activity.time}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No recent activities</p>
             </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Monthly Growth</h3>
-            <p className="text-2xl font-bold text-blue-600">+12.5%</p>
-            <p className="text-sm text-gray-600 mt-1">Compared to last month</p>
-          </div>
-          <div className="text-center p-6 bg-green-50 rounded-lg">
-            <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl text-white">🎯</span>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Efficiency Rate</h3>
-            <p className="text-2xl font-bold text-green-600">94.2%</p>
-            <p className="text-sm text-gray-600 mt-1">Inventory accuracy</p>
-          </div>
-          <div className="text-center p-6 bg-purple-50 rounded-lg">
-            <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl text-white">⚡</span>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Processing Time</h3>
-            <p className="text-2xl font-bold text-purple-600">1.2s</p>
-            <p className="text-sm text-gray-600 mt-1">Average response time</p>
-          </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-gray-900">Quick Actions</h2>
+          <span className="text-sm text-gray-500">Shortcuts</span>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {quickActions.map((action, index) => (
+            <button
+              key={index}
+              onClick={() => handleQuickAction(action.name)}
+              className={`${action.color} text-white p-4 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg`}
+            >
+              <div className="flex flex-col items-center space-y-2">
+                <span className="text-2xl">{action.icon}</span>
+                <span className="font-medium">{action.name}</span>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
     </div>
-  );
+
+    {/* Performance Overview */}
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      <h2 className="text-xl font-bold text-gray-900 mb-6">Performance Overview</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="text-center p-6 bg-blue-50 rounded-lg">
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl text-white">📈</span>
+          </div>
+          <h3 className="font-semibold text-gray-900 mb-2">Monthly Growth</h3>
+          <p className="text-2xl font-bold text-blue-600">+12.5%</p>
+          <p className="text-sm text-gray-600 mt-1">Compared to last month</p>
+        </div>
+        <div className="text-center p-6 bg-green-50 rounded-lg">
+          <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl text-white">🎯</span>
+          </div>
+          <h3 className="font-semibold text-gray-900 mb-2">Efficiency Rate</h3>
+          <p className="text-2xl font-bold text-green-600">94.2%</p>
+          <p className="text-sm text-gray-600 mt-1">Inventory accuracy</p>
+        </div>
+        <div className="text-center p-6 bg-purple-50 rounded-lg">
+          <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl text-white">⚡</span>
+          </div>
+          <h3 className="font-semibold text-gray-900 mb-2">Processing Time</h3>
+          <p className="text-2xl font-bold text-purple-600">1.2s</p>
+          <p className="text-sm text-gray-600 mt-1">Average response time</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+);
 };
 
 export default Dashboard;
