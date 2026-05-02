@@ -15,6 +15,11 @@ interface Expense {
   unit_cost?: number;
   manufacturing_order_id?: string;
   created_at?: string;
+  manufacturing_orders?: {
+    id: string;
+    order_number: string;
+    product_name: string;
+  };
 }
 
 interface MultipleExpense {
@@ -68,8 +73,10 @@ const Expenses: React.FC = () => {
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState('');
   const [unitCost, setUnitCost] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
 
   // Calculate total amount when unit cost or quantity changes
   const calculateTotalAmount = () => {
@@ -84,6 +91,31 @@ const Expenses: React.FC = () => {
     const total = calculateTotalAmount();
     setAmount(total);
   }, [unitCost, quantity]);
+
+  // Ensure unit cost is properly formatted when it changes
+  useEffect(() => {
+    if (unitCost && unitCost !== '0.00') {
+      const formattedCost = Number(unitCost).toFixed(2);
+      if (formattedCost !== unitCost) {
+        setUnitCost(formattedCost);
+      }
+    }
+  }, [unitCost]);
+
+  // Handle product selection
+  const handleProductChange = (productId: string) => {
+    setSelectedProduct(productId);
+    const product = products.find(p => p.id === productId);
+    if (product) {
+      setDescription(product.product_name);
+      // Ensure unit price is properly converted to string with 2 decimal places
+      const unitPrice = product.unit_price ? Number(product.unit_price).toFixed(2) : '0.00';
+      setUnitCost(unitPrice);
+    } else {
+      // Reset if no product selected
+      setUnitCost('0.00');
+    }
+  };
 
   // Fetch employees for multiple selection
   useEffect(() => {
@@ -103,6 +135,40 @@ const Expenses: React.FC = () => {
     };
 
     fetchEmployees();
+  }, []);
+
+  // Fetch products from purchase orders
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const { data, error } = await supabase!
+          .from('purchase_orders')
+          .select('id, product_name, supplier_name, unit_price')
+          .order('product_name');
+        
+        if (error) throw error;
+        
+        // Get unique products with latest unit price
+        const uniqueProducts = data?.reduce((acc: any, item: any) => {
+          const existing = acc.find((p: any) => p.product_name === item.product_name);
+          if (!existing) {
+            acc.push({
+              id: item.id,
+              product_name: item.product_name,
+              supplier_name: item.supplier_name,
+              unit_price: item.unit_price
+            });
+          }
+          return acc;
+        }, []) || [];
+        
+        setProducts(uniqueProducts);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+      }
+    };
+
+    fetchProducts();
   }, []);
 
   const formatCurrency = (amount: number) => {
@@ -200,18 +266,31 @@ const Expenses: React.FC = () => {
 
   const fetchExpenses = async () => {
     try {
-      console.log('Fetching expenses from database...');
-      const { data, error } = await supabase!
+      // First fetch expenses
+      const { data: expenses, error: expensesError } = await supabase!
         .from('manufacturing_expenses')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
       
-      console.log('Fetch result:', { data: data?.length || 0, error });
+      if (expensesError) throw expensesError;
       
-      if (error) throw error;
-      setExpenses(data || []);
-      console.log('Expenses state updated with', data?.length || 0, 'items');
+      // Then fetch manufacturing orders
+      const { data: orders, error: ordersError } = await supabase!
+        .from('manufacturing_orders')
+        .select('id, order_number, product_name');
+      
+      if (ordersError) throw ordersError;
+      
+      // Manually join the data
+      const expensesWithOrders = expenses?.map(expense => ({
+        ...expense,
+        manufacturing_orders: expense.manufacturing_order_id 
+          ? orders.find(order => order.id === expense.manufacturing_order_id)
+          : null
+      })) || [];
+      
+      setExpenses(expensesWithOrders);
     } catch (error) {
       console.error('Error fetching expenses:', error);
     }
@@ -537,7 +616,14 @@ const Expenses: React.FC = () => {
                           {formatCurrency(expense.amount)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {expense.manufacturing_order_id ? `#${expense.manufacturing_order_id}` : 'Unassigned'}
+                          {expense.manufacturing_orders ? (
+                            <div>
+                              <div className="font-medium text-gray-900">{expense.manufacturing_orders.order_number}</div>
+                              <div className="text-xs text-gray-500">{expense.manufacturing_orders.product_name}</div>
+                            </div>
+                          ) : (
+                            'Unassigned'
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(expense.created_at || '').toLocaleDateString()}
@@ -581,7 +667,12 @@ const Expenses: React.FC = () => {
                     <div key={orderId} className="border rounded-lg p-4">
                       <div className="flex justify-between items-center mb-3">
                         <h4 className="font-medium text-gray-900">
-                          {orderId === 'unassigned' ? 'Unassigned Expenses' : `Order #${orderExpenses[0]?.manufacturing_order_id || orderId}`}
+                          {orderId === 'unassigned' ? 'Unassigned Expenses' : (
+                            <div>
+                              <div>{orderExpenses[0]?.manufacturing_orders?.order_number || `Order #${orderId}`}</div>
+                              <div className="text-sm text-gray-500">{orderExpenses[0]?.manufacturing_orders?.product_name}</div>
+                            </div>
+                          )}
                         </h4>
                         <div className="text-sm text-gray-600">
                           {orderExpenses.length} expense{orderExpenses.length === 1 ? '' : 's'} • 
@@ -923,7 +1014,7 @@ const Expenses: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturing Order (Optional)</label>
                   <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900"
                     value={selectedOrder}
                     onChange={(e) => setSelectedOrder(e.target.value)}
                   >
@@ -944,7 +1035,7 @@ const Expenses: React.FC = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Expense Type</label>
                     <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900"
                       value={expenseType}
                       onChange={(e) => setExpenseType(e.target.value as any)}
                     >
@@ -957,38 +1048,52 @@ const Expenses: React.FC = () => {
                     </select>
                   </div>
 
+                  {/* Product Selection - Only show for raw materials */}
+                  {expenseType === 'raw_materials' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Select Material</label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900"
+                        value={selectedProduct}
+                        onChange={(e) => handleProductChange(e.target.value)}
+                      >
+                        <option value="">Select a material...</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.product_name} ({product.supplier_name}) - {formatCurrency(product.unit_price || 0)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Unit Cost (ETB)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      value={unitCost}
-                      onChange={(e) => setUnitCost(e.target.value)}
-                      placeholder="0.00"
-                    />
+                    {expenseType === 'raw_materials' && selectedProduct ? (
+                      <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-900 font-medium">
+                        {Number(unitCost || 0).toFixed(2)}
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900"
+                        value={unitCost}
+                        onChange={(e) => setUnitCost(e.target.value)}
+                        placeholder="0.00"
+                      />
+                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
-                    <input
-                      type="text"
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="e.g., Gypsum powder, Wood planks"
-                    />
-                  </div>
-
+                  
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900"
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
                       placeholder="e.g., 50"
@@ -999,7 +1104,7 @@ const Expenses: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900"
                       value={unit}
                       onChange={(e) => setUnit(e.target.value)}
                       placeholder="e.g., kg, bags, liters"
@@ -1097,6 +1202,7 @@ const Expenses: React.FC = () => {
                     setAmount('');
                     setQuantity('');
                     setUnit('');
+                    setSelectedProduct('');
                   }}
                   className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
                 >
