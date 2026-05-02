@@ -105,7 +105,7 @@ const Layout: React.FC = () => {
   const roleBadge = getRoleBadge();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-zinc-950 flex">
       {/* Sidebar - Fixed Position */}
       <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-gradient-to-b from-slate-900 to-slate-800 text-white transition-all duration-300 ease-in-out shadow-2xl fixed left-0 top-0 h-screen z-40 flex flex-col`}>
         <div className="p-6 flex-shrink-0">
