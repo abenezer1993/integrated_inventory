@@ -1,273 +1,431 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const Landing: React.FC = () => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [activeFeature, setActiveFeature] = useState(0);
+
+  useEffect(() => {
+    setIsVisible(true);
+    const interval = setInterval(() => {
+      setActiveFeature((prev) => (prev + 1) % 6);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const features = [
+    {
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+      ),
+      title: 'Smart Inventory',
+      description: 'Real-time stock tracking with AI-powered low stock predictions and automated reorder suggestions.',
+      gradient: 'from-blue-500 to-cyan-500',
+    },
+    {
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+      ),
+      title: 'Advanced Analytics',
+      description: 'Comprehensive sales insights, revenue forecasting, and performance metrics at your fingertips.',
+      gradient: 'from-emerald-500 to-teal-500',
+    },
+    {
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
+        </svg>
+      ),
+      title: 'Multi-Branch',
+      description: 'Seamless management across unlimited locations with centralized control and real-time sync.',
+      gradient: 'from-violet-500 to-purple-500',
+    },
+    {
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+        </svg>
+      ),
+      title: 'Manufacturing',
+      description: 'Complete production workflow management from raw materials to finished products.',
+      gradient: 'from-orange-500 to-amber-500',
+    },
+    {
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+        </svg>
+      ),
+      title: 'Team Management',
+      description: 'Role-based access control with granular permissions for admins, managers, and staff.',
+      gradient: 'from-pink-500 to-rose-500',
+    },
+    {
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+        </svg>
+      ),
+      title: 'Smart Reports',
+      description: 'Auto-generated insights with exportable reports for expenses, profits, and performance.',
+      gradient: 'from-cyan-500 to-blue-500',
+    },
+  ];
+
+  const stats = [
+    { value: '10x', label: 'Faster Operations', description: 'Streamlined workflows' },
+    { value: '98%', label: 'Accuracy Rate', description: 'Inventory precision' },
+    { value: '50+', label: 'Integrations', description: 'Connect your tools' },
+    { value: '24/7', label: 'Support', description: 'Always here for you' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
-          <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+    <div className="min-h-screen bg-zinc-950 text-white overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-emerald-600/15 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-600/10 rounded-full blur-[150px] animate-pulse" style={{ animationDelay: '2s' }} />
+        {/* Grid pattern */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]" />
+      </div>
+
+      {/* Navigation */}
+      <nav className="relative z-50 border-b border-zinc-800/50 backdrop-blur-xl bg-zinc-950/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
               </div>
+              <span className="text-lg font-semibold tracking-tight">InventoryPro</span>
             </div>
-            <h1 className="text-5xl font-bold text-gray-900 mb-6">
-              Inventory Management
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mt-2">
-                Reimagined
-              </span>
-            </h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Streamline your business operations with our comprehensive inventory management system. 
-              Track products, manage sales, monitor branches, and optimize your supply chain—all in one powerful platform.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <div className="hidden md:flex items-center gap-8">
+              <a href="#features" className="text-sm text-zinc-400 hover:text-white transition-colors">Features</a>
+              <a href="#stats" className="text-sm text-zinc-400 hover:text-white transition-colors">Stats</a>
+              <a href="#about" className="text-sm text-zinc-400 hover:text-white transition-colors">About</a>
+            </div>
+            <div className="flex items-center gap-3">
               <Link
                 to="/login"
-                className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="text-sm text-zinc-400 hover:text-white transition-colors px-4 py-2"
               >
-                Get Started Now
+                Log in
               </Link>
-              <a
-                href="#features"
-                className="px-8 py-4 bg-white text-gray-700 font-semibold rounded-xl border border-gray-300 hover:border-gray-400 hover:shadow-md transition-all duration-200"
+              <Link
+                to="/login"
+                className="text-sm font-medium px-4 py-2 rounded-lg bg-white text-zinc-900 hover:bg-zinc-100 transition-colors"
               >
-                Explore Features
-              </a>
+                Get Started
+              </Link>
             </div>
           </div>
         </div>
-        
-        {/* Decorative Elements */}
-        <div className="absolute top-10 left-10 w-20 h-20 bg-blue-200/20 rounded-full blur-xl"></div>
-        <div className="absolute top-20 right-20 w-32 h-32 bg-purple-200/20 rounded-full blur-xl"></div>
-        <div className="absolute bottom-10 left-1/3 w-24 h-24 bg-blue-300/20 rounded-full blur-xl"></div>
-      </div>
+      </nav>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8">
+      {/* Hero Section */}
+      <section className="relative pt-20 pb-32 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Powerful Features for Modern Business
-            </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Everything you need to manage your inventory efficiently and grow your business
+          <div className={`text-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 mb-8">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-sm text-zinc-300">Now with AI-powered insights</span>
+            </div>
+
+            {/* Headline */}
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6 text-balance">
+              <span className="text-white">The complete</span>
+              <br />
+              <span className="bg-gradient-to-r from-blue-400 via-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                inventory platform
+              </span>
+            </h1>
+
+            {/* Subheadline */}
+            <p className="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed text-pretty">
+              Streamline operations, track inventory in real-time, and make data-driven decisions. 
+              Built for modern businesses that demand excellence.
             </p>
-          </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Inventory Management */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Link
+                to="/login"
+                className="group relative inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white text-zinc-900 font-semibold hover:bg-zinc-100 transition-all duration-300 shadow-xl shadow-white/10"
+              >
+                Start Free Trial
+                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                 </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Smart Inventory</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Real-time stock tracking, low stock alerts, and automated inventory management across multiple branches with detailed analytics.
-              </p>
+              </Link>
+              <a
+                href="#features"
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl border border-zinc-700 text-zinc-300 font-medium hover:bg-zinc-800/50 hover:border-zinc-600 transition-all duration-300"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
+                </svg>
+                Watch Demo
+              </a>
             </div>
 
-            {/* Sales Management */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
+            {/* Trust Badge */}
+            <div className="mt-16 pt-8 border-t border-zinc-800/50">
+              <p className="text-sm text-zinc-500 mb-6">Trusted by innovative companies worldwide</p>
+              <div className="flex flex-wrap justify-center items-center gap-x-12 gap-y-6 opacity-50">
+                <span className="text-xl font-bold tracking-tight text-zinc-400">Acme Corp</span>
+                <span className="text-xl font-bold tracking-tight text-zinc-400">GlobalTech</span>
+                <span className="text-xl font-bold tracking-tight text-zinc-400">Innovate Inc</span>
+                <span className="text-xl font-bold tracking-tight text-zinc-400">FutureCo</span>
+                <span className="text-xl font-bold tracking-tight text-zinc-400">TechPro</span>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Sales Analytics</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Comprehensive sales tracking, customer management, and detailed reporting to optimize your revenue streams and identify growth opportunities.
-              </p>
-            </div>
-
-            {/* Multi-Branch */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Multi-Branch Support</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Manage multiple locations seamlessly with centralized control, branch-specific analytics, and inter-branch inventory transfers.
-              </p>
-            </div>
-
-            {/* Manufacturing */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Manufacturing Control</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Complete manufacturing order management, production tracking, and cost analysis for both gypsum and wood products.
-              </p>
-            </div>
-
-            {/* User Management */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Role-Based Access</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Advanced user management with role-based permissions, ensuring secure access control for admin, branch managers, and staff.
-              </p>
-            </div>
-
-            {/* Reports */}
-            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-100">
-              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v1a1 1 0 001 1h4a1 1 0 001-1v-1m3-2V8a2 2 0 00-2-2H8a2 2 0 00-2 2v8m3-2h6" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Advanced Reporting</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Generate comprehensive reports, track expenses, analyze profitability, and make data-driven decisions with interactive dashboards.
-              </p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Stats Section */}
-      <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
+      <section id="stats" className="relative py-20 border-y border-zinc-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+            {stats.map((stat, index) => (
+              <div
+                key={index}
+                className="text-center group"
+              >
+                <div className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent mb-2">
+                  {stat.value}
+                </div>
+                <div className="text-sm font-medium text-white mb-1">{stat.label}</div>
+                <div className="text-xs text-zinc-500">{stat.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="relative py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Trusted by Growing Businesses
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-800/50 border border-zinc-700/50 mb-6">
+              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Features</span>
+            </div>
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4 text-balance">
+              Everything you need to
+              <br />
+              <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                scale your business
+              </span>
             </h2>
-            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
-              Join hundreds of businesses that have transformed their inventory management
+            <p className="text-lg text-zinc-400 max-w-2xl mx-auto text-pretty">
+              Powerful tools designed to streamline your operations and maximize efficiency
             </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="text-4xl font-bold text-white mb-2">10x</div>
-              <div className="text-blue-100">Faster Operations</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-white mb-2">90%</div>
-              <div className="text-blue-100">Time Saved</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-white mb-2">99.9%</div>
-              <div className="text-blue-100">Uptime</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-white mb-2">24/7</div>
-              <div className="text-blue-100">Support</div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature, index) => (
+              <div
+                key={index}
+                className={`group relative p-6 rounded-2xl border transition-all duration-500 cursor-pointer ${
+                  activeFeature === index
+                    ? 'bg-zinc-800/80 border-zinc-600 scale-[1.02]'
+                    : 'bg-zinc-900/50 border-zinc-800/50 hover:bg-zinc-800/50 hover:border-zinc-700'
+                }`}
+                onMouseEnter={() => setActiveFeature(index)}
+              >
+                {/* Glow effect */}
+                <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${feature.gradient} opacity-0 group-hover:opacity-5 transition-opacity blur-xl`} />
+                
+                <div className={`relative w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-4 shadow-lg`}>
+                  {feature.icon}
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Dashboard Preview Section */}
+      <section className="relative py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+              Powerful dashboard at your fingertips
+            </h2>
+            <p className="text-zinc-400 max-w-xl mx-auto">
+              Monitor your entire operation from a single, intuitive interface
+            </p>
+          </div>
+          
+          {/* Mock Dashboard Preview */}
+          <div className="relative rounded-2xl border border-zinc-800 bg-zinc-900/50 p-1 shadow-2xl shadow-blue-500/5">
+            <div className="rounded-xl bg-zinc-950 overflow-hidden">
+              {/* Browser chrome */}
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-zinc-700" />
+                  <div className="w-3 h-3 rounded-full bg-zinc-700" />
+                  <div className="w-3 h-3 rounded-full bg-zinc-700" />
+                </div>
+                <div className="flex-1 flex justify-center">
+                  <div className="px-4 py-1 rounded-md bg-zinc-800/50 text-xs text-zinc-500">
+                    app.inventorypro.com/dashboard
+                  </div>
+                </div>
+              </div>
+              
+              {/* Dashboard content preview */}
+              <div className="p-6 space-y-4">
+                {/* Stats row */}
+                <div className="grid grid-cols-4 gap-4">
+                  {[
+                    { label: 'Total Revenue', value: '$124,589', change: '+12.5%', color: 'emerald' },
+                    { label: 'Products', value: '1,247', change: '+8.2%', color: 'blue' },
+                    { label: 'Orders', value: '356', change: '+23.1%', color: 'violet' },
+                    { label: 'Customers', value: '892', change: '+4.8%', color: 'amber' },
+                  ].map((stat, i) => (
+                    <div key={i} className="p-4 rounded-xl bg-zinc-800/50 border border-zinc-700/50">
+                      <div className="text-xs text-zinc-500 mb-1">{stat.label}</div>
+                      <div className="text-xl font-bold text-white">{stat.value}</div>
+                      <div className={`text-xs text-${stat.color}-400 mt-1`}>{stat.change}</div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Chart placeholder */}
+                <div className="h-48 rounded-xl bg-zinc-800/30 border border-zinc-700/30 flex items-center justify-center">
+                  <div className="flex items-end gap-1 h-24">
+                    {[40, 65, 45, 80, 55, 90, 70, 85, 60, 95, 75, 88].map((h, i) => (
+                      <div
+                        key={i}
+                        className="w-6 rounded-t bg-gradient-to-t from-blue-600 to-emerald-500 opacity-80"
+                        style={{ height: `${h}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl p-12 shadow-2xl">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Ready to Transform Your Business?
-            </h2>
-            <p className="text-xl text-blue-100 mb-8">
-              Start managing your inventory like never before. Join thousands of satisfied customers.
-            </p>
-            <Link
-              to="/login"
-              className="inline-block px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-gray-50 transition-colors duration-200 shadow-lg"
-            >
-              Get Started Free
-            </Link>
+      <section className="relative py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative rounded-3xl overflow-hidden">
+            {/* Background gradient */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-emerald-600 to-cyan-600 opacity-90" />
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[size:32px_32px]" />
+            
+            <div className="relative px-8 py-16 sm:px-12 sm:py-20 text-center">
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 text-balance">
+                Ready to transform your operations?
+              </h2>
+              <p className="text-lg text-white/80 mb-8 max-w-xl mx-auto text-pretty">
+                Join thousands of businesses already using InventoryPro to streamline their inventory management.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-white text-zinc-900 font-semibold hover:bg-zinc-100 transition-all shadow-xl"
+                >
+                  Get Started Free
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                  </svg>
+                </Link>
+                <a
+                  href="mailto:venustrading@gmail.com"
+                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-white/30 text-white font-medium hover:bg-white/10 transition-all"
+                >
+                  Contact Sales
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-300 py-12 px-4 sm:px-6 lg:px-8">
+      <footer id="about" className="relative border-t border-zinc-800/50 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Company Info */}
-            <div className="flex flex-col">
-              <div className="flex items-center mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center mr-3">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+            {/* Brand */}
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                   </svg>
                 </div>
-                <span className="text-xl font-semibold text-white">Inventory Management System</span>
+                <span className="text-lg font-semibold">InventoryPro</span>
               </div>
-              <p className="text-gray-400 text-sm leading-relaxed">
+              <p className="text-sm text-zinc-400 leading-relaxed max-w-md mb-6">
                 Comprehensive inventory management solution for modern businesses. 
-                Streamline operations, track inventory, and grow your business.
+                Streamline operations, track inventory, and grow your business with confidence.
               </p>
+              <div className="flex items-center gap-4">
+                <span className="text-xs text-zinc-500">Developed by</span>
+                <span className="text-sm font-medium text-blue-400">Venus Tech Solutions</span>
+              </div>
             </div>
 
-            {/* Developer Info */}
-            <div className="flex flex-col">
-              <h3 className="text-lg font-semibold text-white mb-4">Developed By</h3>
-              <div className="space-y-2">
-                <div className="flex items-center">
-                  <span className="text-blue-400 mr-2">🚀</span>
-                  <span className="font-medium text-white">Venus Tech Solutions</span>
-                </div>
-                <div className="flex items-center text-gray-400 text-sm">
-                  <span className="mr-2">📧</span>
-                  <a href="mailto:venustrading@gmail.com" className="hover:text-white transition-colors">
+            {/* Links */}
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-4">Product</h4>
+              <ul className="space-y-3">
+                <li><a href="#features" className="text-sm text-zinc-400 hover:text-white transition-colors">Features</a></li>
+                <li><a href="#stats" className="text-sm text-zinc-400 hover:text-white transition-colors">Stats</a></li>
+                <li><Link to="/login" className="text-sm text-zinc-400 hover:text-white transition-colors">Login</Link></li>
+              </ul>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-4">Contact</h4>
+              <ul className="space-y-3">
+                <li>
+                  <a href="mailto:venustrading@gmail.com" className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                    </svg>
                     venustrading@gmail.com
                   </a>
-                </div>
-                <div className="flex items-center text-gray-400 text-sm">
-                  <span className="mr-2">📞</span>
-                  <a href="tel:+251968661757" className="hover:text-white transition-colors">
+                </li>
+                <li>
+                  <a href="tel:+251968661757" className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                    </svg>
                     +251 96 866 1757
                   </a>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Links */}
-            <div className="flex flex-col">
-              <h3 className="text-lg font-semibold text-white mb-4">Quick Links</h3>
-              <div className="space-y-2">
-                <a href="#features" className="text-gray-400 hover:text-white transition-colors text-sm">
-                  Features
-                </a>
-                <Link to="/login" className="text-gray-400 hover:text-white transition-colors text-sm block">
-                  Login
-                </Link>
-                <a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">
-                  Privacy Policy
-                </a>
-                <a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">
-                  Terms of Service
-                </a>
-              </div>
+                </li>
+              </ul>
             </div>
           </div>
 
-          {/* Copyright */}
-          <div className="border-t border-gray-800 mt-8 pt-8">
-            <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
-              <div>
-                © 2026 Inventory Management System. All rights reserved.
-              </div>
-              <div className="mt-2 md:mt-0">
-                Powered by <span className="text-blue-400 font-medium">Venus Tech Solutions</span> - Built with ❤️ for modern businesses
-              </div>
+          {/* Bottom bar */}
+          <div className="pt-8 border-t border-zinc-800/50 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="text-sm text-zinc-500">
+              2026 InventoryPro. All rights reserved.
+            </div>
+            <div className="text-sm text-zinc-500">
+              Powered by <span className="text-blue-400">Venus Tech Solutions</span>
             </div>
           </div>
         </div>
