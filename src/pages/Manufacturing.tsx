@@ -816,32 +816,66 @@ const Manufacturing: React.FC = () => {
       console.log('📦 Creating inventory record...');
       
       try {
-        const inventoryRecord: any = {
+        const manufacturedProductIdForInventory = finalProductId;
+
+        // Always use manufactured_product_id for manufacturing transfers
+        // (even if we created a regular product as fallback)
+        const baseInventoryRecord: any = {
           branch_id: destinationBranchId,
-          quantity: order.quantity_produced,
-          last_updated: new Date().toISOString()
+          manufactured_product_id: manufacturedProductIdForInventory,
+          product_id: null,
+          last_updated: new Date().toISOString(),
         };
-        
-        // Set appropriate product reference based on type
-        if (productType === 'manufactured') {
-          inventoryRecord.manufactured_product_id = finalProductId;
-          inventoryRecord.product_id = null;
-        } else {
-          // Always use manufactured_product_id for manufacturing transfers
-          // even if we created a regular product as fallback
-          inventoryRecord.manufactured_product_id = finalProductId;
-          inventoryRecord.product_id = null;
-        }
-        
-        const { data: inventoryData, error: inventoryError } = await supabase!
+
+        // If inventory already exists for this product+branch, increment quantity.
+        const { data: existingInventory, error: existingError } = await supabase!
           .from('inventory')
-          .insert(inventoryRecord)
-          .select()
-          .single();
+          .select('id, quantity')
+          .eq('manufactured_product_id', manufacturedProductIdForInventory)
+          .eq('branch_id', destinationBranchId)
+          .maybeSingle();
+
+        if (existingError) throw existingError;
+
+        const transferQty = Number(order.quantity_produced) || 0;
+        if (!transferQty || transferQty <= 0) {
+          throw new Error('Invalid transfer quantity');
+        }
+
+        let inventoryData: any = null;
+        let inventoryError: any = null;
+
+        if (existingInventory?.id) {
+          const newQty = (Number(existingInventory.quantity) || 0) + transferQty;
+          const updateResult = await supabase!
+            .from('inventory')
+            .update({
+              quantity: newQty,
+              last_updated: new Date().toISOString(),
+            })
+            .eq('id', existingInventory.id)
+            .select()
+            .single();
+
+          inventoryData = updateResult.data;
+          inventoryError = updateResult.error;
+        } else {
+          const insertResult = await supabase!
+            .from('inventory')
+            .insert({
+              ...baseInventoryRecord,
+              quantity: transferQty,
+            })
+            .select()
+            .single();
+
+          inventoryData = insertResult.data;
+          inventoryError = insertResult.error;
+        }
         
         if (inventoryError) throw inventoryError;
         
-        console.log('✅ Inventory item created successfully:', inventoryData);
+        console.log('✅ Inventory updated successfully:', inventoryData);
         
         // Create stock movement record
         await createStockMovement(order, finalProductId, productType, destinationBranchId);
