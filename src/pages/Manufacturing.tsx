@@ -25,6 +25,7 @@ const Manufacturing: React.FC = () => {
   const [branches, setBranches] = useState<any[]>([]);
   const [transferModal, setTransferModal] = useState<{ isOpen: boolean; order: any | null }>({ isOpen: false, order: null });
   const [transferDestinationBranchId, setTransferDestinationBranchId] = useState<string>('');
+  const [transferQuantity, setTransferQuantity] = useState<string>('');
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
@@ -346,6 +347,12 @@ const Manufacturing: React.FC = () => {
     }
   };
 
+  const getTransferredForOrder = (orderId: string) => {
+    return manufacturingTransfers
+      .filter((t: any) => t.reference_id === orderId)
+      .reduce((sum: number, t: any) => sum + (Number(t.quantity) || 0), 0);
+  };
+
   const handleAddProduction = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -607,17 +614,21 @@ const Manufacturing: React.FC = () => {
     });
 
     setTransferDestinationBranchId('');
+    const alreadyTransferred = order?.id ? getTransferredForOrder(order.id) : 0;
+    const produced = Number(order?.quantity_produced) || 0;
+    const remaining = Math.max(0, produced - alreadyTransferred);
+    setTransferQuantity(String(remaining));
     setTransferModal({ isOpen: true, order });
   };
 
-  const performTransfer = async (order: any, destinationBranchId: string) => {
+  const performTransfer = async (order: any, destinationBranchId: string, transferQty: number) => {
     try {
       console.log('🚀 Starting transfer process...');
       console.log('Order details:', {
         id: order.id,
         order_number: order.order_number,
         product_name: order.product_name,
-        quantity_produced: order.quantity_produced,
+        transfer_quantity: transferQty,
         finished_product_id: order.finished_product_id,
         destination_branch_id: destinationBranchId
       });
@@ -735,7 +746,7 @@ const Manufacturing: React.FC = () => {
               console.log('✅ Direct inventory created successfully:', directInventory);
               
               // Create stock movement
-              await createStockMovement(order, null, 'direct', destinationBranchId);
+              await createStockMovement(order, null, 'direct', destinationBranchId, transferQty);
               
               showAlert('Success', '✅ Product transferred to inventory (direct method)!', 'success');
               fetchManufacturingOrders();
@@ -798,7 +809,7 @@ const Manufacturing: React.FC = () => {
             console.log('✅ Direct inventory created successfully:', directInventory);
             
             // Create stock movement
-            await createStockMovement(order, null, 'direct', destinationBranchId);
+            await createStockMovement(order, null, 'direct', destinationBranchId, transferQty);
             
             showAlert('Success', '✅ Product transferred to inventory (direct method)!', 'success');
             fetchManufacturingOrders();
@@ -837,9 +848,11 @@ const Manufacturing: React.FC = () => {
 
         if (existingError) throw existingError;
 
-        const transferQty = Number(order.quantity_produced) || 0;
         if (!transferQty || transferQty <= 0) {
           throw new Error('Invalid transfer quantity');
+        }
+        if (transferQty > (Number(order.quantity_produced) || 0)) {
+          throw new Error('Transfer quantity cannot exceed produced quantity');
         }
 
         let inventoryData: any = null;
@@ -878,7 +891,7 @@ const Manufacturing: React.FC = () => {
         console.log('✅ Inventory updated successfully:', inventoryData);
         
         // Create stock movement record
-        await createStockMovement(order, finalProductId, productType, destinationBranchId);
+        await createStockMovement(order, finalProductId, productType, destinationBranchId, transferQty);
         
         console.log('🎉 Transfer completed successfully!');
         showAlert('Success', '✅ Product transferred to inventory successfully!', 'success');
@@ -897,7 +910,7 @@ const Manufacturing: React.FC = () => {
   };
 
   // Helper function to create stock movement
-  const createStockMovement = async (order: any, productId: string | null, type: string, destinationBranchId: string) => {
+  const createStockMovement = async (order: any, productId: string | null, type: string, destinationBranchId: string, transferQty: number) => {
     try {
       console.log('📋 Creating stock movement record...');
       
@@ -905,8 +918,8 @@ const Manufacturing: React.FC = () => {
         movement_number: `TR${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
         type: 'manufacturing',
         to_branch_id: destinationBranchId ?? null,
-        quantity: order.quantity_produced,
-        notes: `Manufactured product transferred: ${order.product_name} - Order: ${order.order_number}`,
+        quantity: transferQty,
+        notes: `Manufactured product transferred (${transferQty}): ${order.product_name} - Order: ${order.order_number}`,
         reference_id: order.id,
         reference_type: 'manufacturing_order',
         created_by: user?.id ?? null
@@ -1703,6 +1716,33 @@ const Manufacturing: React.FC = () => {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quantity to Transfer <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={transferQuantity}
+                  onChange={(e) => setTransferQuantity(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  min="1"
+                  max={(() => {
+                    const produced = Number(transferModal.order?.quantity_produced) || 0;
+                    const transferred = transferModal.order?.id ? getTransferredForOrder(transferModal.order.id) : 0;
+                    return Math.max(0, produced - transferred) || undefined;
+                  })()}
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {(() => {
+                    const produced = Number(transferModal.order?.quantity_produced) || 0;
+                    const transferred = transferModal.order?.id ? getTransferredForOrder(transferModal.order.id) : 0;
+                    const remaining = Math.max(0, produced - transferred);
+                    return `Produced: ${produced} • Already transferred: ${transferred} • Remaining: ${remaining}`;
+                  })()}
+                </p>
+              </div>
+
               <div className="flex space-x-3">
                 <button
                   type="button"
@@ -1710,6 +1750,7 @@ const Manufacturing: React.FC = () => {
                   onClick={() => {
                     setTransferModal({ isOpen: false, order: null });
                     setTransferDestinationBranchId('');
+                    setTransferQuantity('');
                   }}
                 >
                   Cancel
@@ -1722,11 +1763,24 @@ const Manufacturing: React.FC = () => {
                       await showAlert('Error', 'Please select a destination branch.', 'error');
                       return;
                     }
+                    const qty = Number(transferQuantity);
+                    const produced = Number(transferModal.order?.quantity_produced) || 0;
+                    const alreadyTransferred = transferModal.order?.id ? getTransferredForOrder(transferModal.order.id) : 0;
+                    const maxQty = Math.max(0, produced - alreadyTransferred);
+                    if (!qty || qty <= 0) {
+                      await showAlert('Error', 'Please enter a valid transfer quantity.', 'error');
+                      return;
+                    }
+                    if (qty > maxQty) {
+                      await showAlert('Error', `Transfer quantity cannot exceed remaining quantity (${maxQty}).`, 'error');
+                      return;
+                    }
                     const order = transferModal.order;
                     setTransferModal({ isOpen: false, order: null });
                     const branchId = transferDestinationBranchId;
                     setTransferDestinationBranchId('');
-                    await performTransfer(order, branchId);
+                    setTransferQuantity('');
+                    await performTransfer(order, branchId, qty);
                   }}
                 >
                   Transfer
