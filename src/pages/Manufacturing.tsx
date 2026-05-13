@@ -13,6 +13,7 @@ const Manufacturing: React.FC = () => {
   const { user, hasPermission } = useAuth();
   const { showConfirmation } = useConfirmation();
   const [manufacturingOrders, setManufacturingOrders] = useState<ManufacturingOrder[]>([]);
+  const [manufacturingTransfers, setManufacturingTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -21,8 +22,9 @@ const Manufacturing: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [productName, setProductName] = useState('');
-  const [selectedBranch, setSelectedBranch] = useState('');
   const [branches, setBranches] = useState<any[]>([]);
+  const [transferModal, setTransferModal] = useState<{ isOpen: boolean; order: any | null }>({ isOpen: false, order: null });
+  const [transferDestinationBranchId, setTransferDestinationBranchId] = useState<string>('');
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
@@ -256,8 +258,25 @@ const Manufacturing: React.FC = () => {
       fetchManufacturingOrders();
       fetchBranches();
       fetchEmployees();
+      fetchManufacturingTransfers();
     }
   }, [authLoading]);
+
+  const fetchManufacturingTransfers = async () => {
+    try {
+      const { data, error } = await supabase!
+        .from('stock_movements')
+        .select('id, quantity, to_branch_id, reference_id, created_at, type')
+        .eq('type', 'manufacturing')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setManufacturingTransfers(data || []);
+    } catch (error) {
+      console.error('Error fetching manufacturing transfers:', error);
+      setManufacturingTransfers([]);
+    }
+  };
 
   const fetchBranches = async () => {
     try {
@@ -330,12 +349,14 @@ const Manufacturing: React.FC = () => {
   const handleAddProduction = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedCategory || !productName || !quantity || !selectedBranch) {
-      console.error('Please fill in all required fields: category, product name, quantity, and branch');
+    if (!selectedCategory || !productName || !quantity) {
+      console.error('Please fill in all required fields: category, product name, and quantity');
       return;
     }
 
     try {
+      const branchIdParam = user?.branch_id ?? null;
+
       // Generate order number
       const orderNumber = `MFG${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       
@@ -349,7 +370,7 @@ const Manufacturing: React.FC = () => {
       const { data: orderData, error: orderError } = await supabase!
         .rpc('create_manufacturing_order_with_branch', {
           order_number_param: orderNumber,
-          branch_id_param: selectedBranch,
+          branch_id_param: branchIdParam,
           product_name_param: productName,
           quantity_produced_param: parseInt(quantity),
           status_param: 'completed',
@@ -368,7 +389,7 @@ const Manufacturing: React.FC = () => {
         .rpc('create_manufactured_product_with_branch', {
           product_name: productName,
           product_quantity: parseInt(quantity),
-          branch_id: selectedBranch
+          branch_id: branchIdParam
         });
       
       if (productError) throw productError;
@@ -406,7 +427,6 @@ const Manufacturing: React.FC = () => {
       setNotes('');
       setSelectedCategory('');
       setProductName('');
-      setSelectedBranch('');
       setSelectedEmployee('');
       setMeasurementType('piece');
             setShowAddForm(false);
@@ -585,21 +605,12 @@ const Manufacturing: React.FC = () => {
       quantity_produced: order.quantity_produced,
       status: order.status
     });
-    
-    showConfirmation({
-      title: 'Transfer to Inventory',
-      message: `Transfer ${order.quantity_produced} units of "${order.product_name}" to inventory?\n\nThis will add the product to your inventory stock.`,
-      onConfirm: () => {
-        console.log('🔍 Transfer confirmed, calling performTransfer...');
-        performTransfer(order);
-      },
-      type: 'info',
-      confirmText: 'Transfer',
-      cancelText: 'Cancel'
-    });
+
+    setTransferDestinationBranchId('');
+    setTransferModal({ isOpen: true, order });
   };
 
-  const performTransfer = async (order: any) => {
+  const performTransfer = async (order: any, destinationBranchId: string) => {
     try {
       console.log('🚀 Starting transfer process...');
       console.log('Order details:', {
@@ -608,11 +619,11 @@ const Manufacturing: React.FC = () => {
         product_name: order.product_name,
         quantity_produced: order.quantity_produced,
         finished_product_id: order.finished_product_id,
-        branch_id: order.branch_id
+        destination_branch_id: destinationBranchId
       });
       
       // Validate required fields
-      if (!order.id || !order.order_number || !order.product_name || !order.quantity_produced || !order.branch_id) {
+      if (!order.id || !order.order_number || !order.product_name || !order.quantity_produced || !destinationBranchId) {
         console.error('❌ Missing required order fields');
         throw new Error('Invalid order data: missing required fields');
       }
@@ -712,7 +723,7 @@ const Manufacturing: React.FC = () => {
                 .insert({
                   product_id: null,
                   manufactured_product_id: null,
-                  branch_id: order.branch_id,
+                  branch_id: destinationBranchId,
                   quantity: order.quantity_produced,
                   last_updated: new Date().toISOString()
                 })
@@ -724,10 +735,11 @@ const Manufacturing: React.FC = () => {
               console.log('✅ Direct inventory created successfully:', directInventory);
               
               // Create stock movement
-              await createStockMovement(order, null, 'direct');
+              await createStockMovement(order, null, 'direct', destinationBranchId);
               
               showAlert('Success', '✅ Product transferred to inventory (direct method)!', 'success');
               fetchManufacturingOrders();
+              fetchManufacturingTransfers();
               return;
               
             } catch (directError: any) {
@@ -774,7 +786,7 @@ const Manufacturing: React.FC = () => {
               .insert({
                 product_id: null,
                 manufactured_product_id: null,
-                branch_id: order.branch_id,
+                branch_id: destinationBranchId,
                 quantity: order.quantity_produced,
                 last_updated: new Date().toISOString()
               })
@@ -786,10 +798,11 @@ const Manufacturing: React.FC = () => {
             console.log('✅ Direct inventory created successfully:', directInventory);
             
             // Create stock movement
-            await createStockMovement(order, null, 'direct');
+            await createStockMovement(order, null, 'direct', destinationBranchId);
             
             showAlert('Success', '✅ Product transferred to inventory (direct method)!', 'success');
             fetchManufacturingOrders();
+            fetchManufacturingTransfers();
             return;
             
           } catch (directError: any) {
@@ -804,7 +817,7 @@ const Manufacturing: React.FC = () => {
       
       try {
         const inventoryRecord: any = {
-          branch_id: order.branch_id,
+          branch_id: destinationBranchId,
           quantity: order.quantity_produced,
           last_updated: new Date().toISOString()
         };
@@ -831,11 +844,12 @@ const Manufacturing: React.FC = () => {
         console.log('✅ Inventory item created successfully:', inventoryData);
         
         // Create stock movement record
-        await createStockMovement(order, finalProductId, productType);
+        await createStockMovement(order, finalProductId, productType, destinationBranchId);
         
         console.log('🎉 Transfer completed successfully!');
         showAlert('Success', '✅ Product transferred to inventory successfully!', 'success');
         fetchManufacturingOrders();
+        fetchManufacturingTransfers();
         
       } catch (inventoryError: any) {
         console.error('❌ Inventory creation failed:', inventoryError.message);
@@ -849,17 +863,19 @@ const Manufacturing: React.FC = () => {
   };
 
   // Helper function to create stock movement
-  const createStockMovement = async (order: any, productId: string | null, type: string) => {
+  const createStockMovement = async (order: any, productId: string | null, type: string, destinationBranchId: string) => {
     try {
       console.log('📋 Creating stock movement record...');
       
       const movementRecord: any = {
         movement_number: `TR${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
         type: 'manufacturing',
+        to_branch_id: destinationBranchId ?? null,
         quantity: order.quantity_produced,
         notes: `Manufactured product transferred: ${order.product_name} - Order: ${order.order_number}`,
         reference_id: order.id,
-        reference_type: 'manufacturing_order'
+        reference_type: 'manufacturing_order',
+        created_by: user?.id ?? null
       };
       
       // Set appropriate product reference
@@ -1010,51 +1026,150 @@ const Manufacturing: React.FC = () => {
       {/* Overview Tab */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <span className="text-2xl">0</span>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Today's Production</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {manufacturingOrders
-                      .filter(order => new Date(order.created_at).toDateString() === new Date().toDateString())
-                      .reduce((sum, order) => sum + order.quantity_produced, 0)}
-                  </p>
-                </div>
-              </div>
-            </div>
+          {(() => {
+            const totalProduced = manufacturingOrders.reduce((sum, o: any) => sum + (o.quantity_produced || 0), 0);
+            const gypsumProduced = manufacturingOrders
+              .filter((o: any) => o.product_category === 'gypsum')
+              .reduce((sum, o: any) => sum + (o.quantity_produced || 0), 0);
+            const woodProduced = manufacturingOrders
+              .filter((o: any) => o.product_category === 'wood')
+              .reduce((sum, o: any) => sum + (o.quantity_produced || 0), 0);
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                  <span className="text-2xl">0</span>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Production Records</p>
-                  <p className="text-2xl font-bold text-gray-900">{manufacturingOrders.length}</p>
-                </div>
-              </div>
-            </div>
+            const totalTransferred = manufacturingTransfers.reduce((sum: number, t: any) => sum + (Number(t.quantity) || 0), 0);
+            const leftToTransfer = Math.max(0, totalProduced - totalTransferred);
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                  <span className="text-2xl">0</span>
+            const branchIndex = new Map<string, { name: string; location?: string }>(
+              branches.map((b: any) => [b.id, { name: b.name, location: b.location }])
+            );
+
+            const transferredByBranch = manufacturingTransfers.reduce((acc: Record<string, number>, t: any) => {
+              const branchId = t.to_branch_id || 'unknown';
+              acc[branchId] = (acc[branchId] || 0) + (Number(t.quantity) || 0);
+              return acc;
+            }, {});
+
+            const transferredRows = Object.entries(transferredByBranch)
+              .map(([branchId, qty]) => {
+                const meta = branchIndex.get(branchId);
+                return {
+                  branchId,
+                  qty,
+                  label: branchId === 'unknown' ? 'Unknown / not set' : `${meta?.name || 'Unknown Branch'}${meta?.location ? ` - ${meta.location}` : ''}`,
+                };
+              })
+              .sort((a, b) => b.qty - a.qty);
+
+            return (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">🏗️</span>
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Gypsum Produced</p>
+                        <p className="text-2xl font-bold text-gray-900">{gypsumProduced}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">🪵</span>
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Wood Produced</p>
+                        <p className="text-2xl font-bold text-gray-900">{woodProduced}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">📦</span>
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Transferred</p>
+                        <p className="text-2xl font-bold text-gray-900">{totalTransferred}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">This Month</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {manufacturingOrders
-                      .filter(order => new Date(order.created_at).getMonth() === new Date().getMonth())
-                      .reduce((sum, order) => sum + order.quantity_produced, 0)}
-                  </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">📅</span>
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Today's Production</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          {manufacturingOrders
+                            .filter(order => new Date(order.created_at).toDateString() === new Date().toDateString())
+                            .reduce((sum, order) => sum + order.quantity_produced, 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">🧾</span>
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Records</p>
+                        <p className="text-2xl font-bold text-gray-900">{manufacturingOrders.length}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                        <span className="text-2xl">⏳</span>
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Left to Transfer</p>
+                        <p className="text-2xl font-bold text-gray-900">{leftToTransfer}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
+
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Transferred To (by Branch)</h3>
+                    <button
+                      type="button"
+                      onClick={fetchManufacturingTransfers}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                      title="Refresh transfer stats"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {transferredRows.length === 0 ? (
+                    <p className="text-sm text-gray-600">No transfers recorded yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {transferredRows.map((row) => (
+                        <div key={row.branchId} className="flex items-center justify-between border rounded-lg px-4 py-2">
+                          <div className="text-sm text-gray-900">{row.label}</div>
+                          <div className="text-sm font-semibold text-gray-900">{row.qty}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -1084,9 +1199,6 @@ const Manufacturing: React.FC = () => {
                   Category
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Branch
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Employee
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1109,7 +1221,7 @@ const Manufacturing: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {manufacturingOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center">
+                  <td colSpan={10} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <span className="text-3xl mb-2"></span>
                       <span className="text-lg font-medium text-gray-900">No production history found</span>
@@ -1145,9 +1257,6 @@ const Manufacturing: React.FC = () => {
                       <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
                         {order.product_category === 'gypsum' ? 'Gypsum Work' : order.product_category === 'wood' ? 'Wood Work' : 'N/A'}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {order.branches?.name || 'Unknown Branch'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {order.employee?.full_name || order.employee_name || 'Not Assigned'}
@@ -1454,26 +1563,6 @@ const Manufacturing: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Branch <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                  required
-                >
-                  <option value="">Select branch</option>
-                  {branches.map((branch: any) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name} - {branch.location}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Product Name
                 </label>
                 <input
@@ -1546,6 +1635,70 @@ const Manufacturing: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer to Inventory Modal */}
+      {transferModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold mb-2">Transfer to Inventory</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Transfer <span className="font-medium">{transferModal.order?.quantity_produced}</span> units of{' '}
+              <span className="font-medium">"{transferModal.order?.product_name}"</span> to inventory.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Destination Branch <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={transferDestinationBranchId}
+                  onChange={(e) => setTransferDestinationBranchId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  required
+                >
+                  <option value="">Select branch</option>
+                  {branches.map((branch: any) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name} - {branch.location}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg"
+                  onClick={() => {
+                    setTransferModal({ isOpen: false, order: null });
+                    setTransferDestinationBranchId('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                  onClick={async () => {
+                    if (!transferDestinationBranchId) {
+                      await showAlert('Error', 'Please select a destination branch.', 'error');
+                      return;
+                    }
+                    const order = transferModal.order;
+                    setTransferModal({ isOpen: false, order: null });
+                    const branchId = transferDestinationBranchId;
+                    setTransferDestinationBranchId('');
+                    await performTransfer(order, branchId);
+                  }}
+                >
+                  Transfer
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -4,6 +4,15 @@ import { useDialogs } from '../utils/simpleDialogs';
 const DialogRenderer: React.FC = () => {
   const { currentDialog, closeDialog } = useDialogs();
 
+  // Keep hooks unconditional (React hook rules)
+  const [promptValue, setPromptValue] = React.useState('');
+
+  React.useEffect(() => {
+    if (currentDialog?.type === 'prompt') {
+      setPromptValue(currentDialog.defaultValue || '');
+    }
+  }, [currentDialog?.type, currentDialog?.defaultValue]);
+
   if (!currentDialog) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -110,11 +119,9 @@ const DialogRenderer: React.FC = () => {
 
   // Prompt Dialog
   if (currentDialog.type === 'prompt') {
-    const [value, setValue] = React.useState(currentDialog.defaultValue || '');
-
     const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      closeDialog(value);
+      closeDialog(promptValue);
     };
 
     return (
@@ -138,8 +145,8 @@ const DialogRenderer: React.FC = () => {
                     </p>
                     <input
                       type={currentDialog.inputType || 'text'}
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
+                      value={promptValue}
+                      onChange={(e) => setPromptValue(e.target.value)}
                       placeholder={currentDialog.placeholder}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       autoFocus
