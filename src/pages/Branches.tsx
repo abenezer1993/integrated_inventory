@@ -145,17 +145,94 @@ const Branches: React.FC = () => {
         throw new Error('Supabase client not available');
       }
       
-      const { data: salesData, error: salesError } = await supabase
-        .from('sales')
-        .select(`
-          *,
-          products (name, sku),
-          customers (name),
-          branches (name)
-        `)
-        .eq('branch_id', branchId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // First try with joins, fallback to simple query if it fails
+      let salesData, salesError;
+      
+      try {
+        const result = await supabase
+          .from('sales')
+          .select(`
+            *,
+            products (name, sku),
+            customers (name),
+            branches (name)
+          `)
+          .eq('branch_id', branchId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        salesData = result.data;
+        salesError = result.error;
+        
+        if (salesError) throw salesError;
+      } catch (joinError) {
+        console.log('Join query failed, trying simple query:', joinError);
+        
+        // Fallback: Get sales without joins, then fetch product info separately
+        const result = await supabase
+          .from('sales')
+          .select('*')
+          .eq('branch_id', branchId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        salesData = result.data;
+        salesError = result.error;
+        
+        // If we have sales data, fetch product information separately
+        if (salesData && salesData.length > 0) {
+          const regularProductIds = Array.from(new Set(
+            salesData.map(sale => sale.product_id).filter(Boolean)
+          ));
+          const manufacturedProductIds = Array.from(new Set(
+            salesData.map(sale => sale.manufactured_product_id).filter(Boolean)
+          ));
+          
+          // Fetch both regular and manufactured products
+          let regularProductsData: any[] = [];
+          let manufacturedProductsData: any[] = [];
+          
+          if (regularProductIds.length > 0 || manufacturedProductIds.length > 0) {
+            const [regularResult, manufacturedResult] = await Promise.all([
+              // Only fetch if we have regular product IDs
+              regularProductIds.length > 0 ? supabase
+                .from('products')
+                .select('id, name, sku')
+                .in('id', regularProductIds) : Promise.resolve({ data: [] }),
+              
+              // Only fetch if we have manufactured product IDs  
+              manufacturedProductIds.length > 0 ? supabase
+                .from('manufactured_products')
+                .select('id, name, sku')
+                .in('id', manufacturedProductIds) : Promise.resolve({ data: [] })
+            ]);
+            
+            regularProductsData = regularResult.data || [];
+            manufacturedProductsData = manufacturedResult.data || [];
+          }
+          
+          // Add product info to sales data
+          salesData = salesData.map(sale => {
+            let productInfo = null;
+            
+            if (sale.product_id) {
+              productInfo = regularProductsData.find((p: any) => p.id === sale.product_id) || null;
+            } else if (sale.manufactured_product_id) {
+              productInfo = manufacturedProductsData.find((p: any) => p.id === sale.manufactured_product_id) || null;
+            }
+            
+            return {
+              ...sale,
+              products: productInfo
+            };
+          });
+        }
+      }
+      
+      console.log('Fetching sales for branch ID:', branchId);
+      console.log('Branch sales data returned:', salesData?.length, 'items');
+      console.log('Sample sale:', salesData?.[0]);
+      console.log('All branch sales for branch', branchId, ':', salesData);
       
       if (salesError) throw salesError;
       
@@ -241,10 +318,11 @@ const Branches: React.FC = () => {
       
       const { data: allSales, error: salesError } = await supabase
         .from('sales')
-        .select('branch_id, quantity_sold, total_amount')
+        .select('*')
         .limit(5);
       
       console.log('Sample sales data:', allSales, 'Error:', salesError);
+      console.log('Sample sale columns:', allSales?.[0] ? Object.keys(allSales[0]) : 'No data');
       
       const { data: branchesData, error: branchesError } = await supabase
         .from('branches')
@@ -285,10 +363,12 @@ const Branches: React.FC = () => {
           
           const { data: salesData, error: salesError } = await supabase
             .from('sales')
-            .select('quantity_sold, total_amount, created_at')
+            .select('*')
             .eq('branch_id', branch.id);
           
           console.log(`Sales data for ${branch.name}:`, salesData, 'Error:', salesError);
+          console.log('Sample sale record:', salesData?.[0]);
+          console.log('Available columns:', salesData?.[0] ? Object.keys(salesData[0]) : 'No data');
           
           if (salesError) throw salesError;
           
@@ -297,18 +377,33 @@ const Branches: React.FC = () => {
             inventoryData?.map(item => item.product_id || item.manufactured_product_id).filter(Boolean)
           ).size;
           
-          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity_sold || 0), 0) || 0;
-          const totalSalesAmount = salesData?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
+          const totalSales = salesData?.reduce((sum, sale) => {
+            // Try different possible column names for quantity
+            const qty = sale.quantity || sale.quantity_sold || sale.units || 0;
+            return sum + (qty || 0);
+          }, 0) || 0;
+          
+          const totalSalesAmount = salesData?.reduce((sum, sale) => {
+            // Try different possible column names for total amount
+            const amount = sale.total_amount || sale.amount || sale.total || 0;
+            return sum + (amount || 0);
+          }, 0) || 0;
           
           const today = new Date().toISOString().split('T')[0];
           const todaySales = salesData?.filter(sale => sale.created_at?.startsWith(today))
-            .reduce((sum, sale) => sum + (sale.quantity_sold || 0), 0) || 0;
+            .reduce((sum, sale) => {
+              const qty = sale.quantity || sale.quantity_sold || sale.units || 0;
+              return sum + (qty || 0);
+            }, 0) || 0;
           
           const sevenDaysAgo = new Date();
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
           const recentSales = salesData?.filter(sale => 
             new Date(sale.created_at || '') >= sevenDaysAgo
-          ).reduce((sum, sale) => sum + (sale.quantity_sold || 0), 0) || 0;
+          ).reduce((sum, sale) => {
+            const qty = sale.quantity || sale.quantity_sold || sale.units || 0;
+            return sum + (qty || 0);
+          }, 0) || 0;
           
           const lowStockItems = inventoryData?.filter(item => (item.quantity || 0) < 10).length || 0;
           
@@ -1100,13 +1195,13 @@ const Branches: React.FC = () => {
                                   {new Date(sale.created_at).toLocaleDateString()}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  {sale.customers?.name || 'Walk-in Customer'}
+                                  {sale.customers?.name || sale.customer_name || 'Walk-in Customer'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  {sale.products?.name || 'Unknown Product'}
+                                  {sale.products?.name || sale.product_name || 'Unknown Product'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  {sale.quantity_sold}
+                                  {sale.quantity_sold || sale.quantity || 0}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
                                   ${sale.total_amount?.toFixed(2) || '0.00'}

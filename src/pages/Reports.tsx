@@ -207,18 +207,20 @@ const Reports: React.FC = () => {
       setError(null);
       setLoading(true);
       
-      // Fetch all basic data in parallel
+      // Fetch all basic data in parallel using correct tables
       const [
         productsResult,
+        manufacturedProductsResult,
         inventoryResult,
         salesResult,
         purchasesResult,
         manufacturingResult,
         employeesResult
       ] = await Promise.all([
-        supabase!.from('purchase_orders').select('count', { count: 'exact' }), // Using purchase_orders as products
-        supabase!.from('purchase_orders').select('count', { count: 'exact' }), // Using purchase_orders as inventory
-        supabase!.from('manufacturing_orders').select('count', { count: 'exact' }), // Using manufacturing_orders as sales
+        supabase!.from('products').select('count', { count: 'exact' }),
+        supabase!.from('manufactured_products').select('count', { count: 'exact' }),
+        supabase!.from('inventory').select('count', { count: 'exact' }),
+        supabase!.from('sales').select('count', { count: 'exact' }),
         supabase!.from('purchase_orders').select('count', { count: 'exact' }),
         supabase!.from('manufacturing_orders').select('count', { count: 'exact' }),
         supabase!.from('employees').select('count', { count: 'exact' })
@@ -232,25 +234,24 @@ const Reports: React.FC = () => {
         branchPerfResult,
         monthlyTrendsResult,
         revenueResult,
-        costsResult,
-        expensesResult
+        costsResult
       ] = await Promise.all([
-        // Sales trends for last 30 days (using manufacturing_orders as sales since no sales_orders table)
+        // Sales trends for last period
         supabase!
-          .from('manufacturing_orders')
+          .from('sales')
           .select('created_at, total_amount, quantity')
           .gte('created_at', subDays(new Date(), parseInt(selectedPeriod)).toISOString())
           .order('created_at', { ascending: true }),
         
-        // Inventory by category (using purchase_orders since no inventory table)
+        // Low stock items from inventory
         supabase!
-          .from('purchase_orders')
-          .select('quantity, product_name, unit_price')
+          .from('inventory')
+          .select('quantity, products!inner(name, sku, unit, low_stock_threshold)')
           .lt('quantity', 10),
         
-        // Top performing products (using purchase_orders)
+        // Top performing products from sales
         supabase!
-          .from('purchase_orders')
+          .from('sales')
           .select('product_name, quantity, total_amount, unit_price')
           .order('total_amount', { ascending: false })
           .limit(10),
@@ -258,49 +259,40 @@ const Reports: React.FC = () => {
         // Branch performance
         supabase!
           .from('branches')
-          .select('name, sales_orders(count), employees(count)'),
+          .select('name, id'),
         
-        // Monthly trends (using manufacturing_orders)
+        // Monthly trends from sales
         supabase!
-          .from('manufacturing_orders')
+          .from('sales')
           .select('created_at, total_amount')
           .gte('created_at', subDays(new Date(), 180).toISOString()),
         
-        // Total revenue (using manufacturing_orders)
+        // Total revenue from sales
         supabase!
-          .from('manufacturing_orders')
+          .from('sales')
           .select('total_amount'),
         
-        // Total costs (using purchase_orders)
+        // Total costs from purchase_orders
         supabase!
           .from('purchase_orders')
-          .select('total_amount'),
-        
-        // Total expenses (using manufacturing_expenses)
-        supabase!
-          .from('manufacturing_expenses')
-          .select('amount')
+          .select('total_amount')
       ]);
 
-// Fetch low stock items (using purchase_orders with low quantity)
-      const { data: lowStockData } = await supabase!
-        .from('purchase_orders')
-        .select('id')
-        .lt('quantity', 10);
+// Low stock items count from inventory details
+      const lowStockItems = inventoryDetailsResult.data?.length || 0;
 
       const totalRevenue = revenueResult.data?.reduce((sum: number, item: any) => sum + (item.total_amount || 0), 0) || 0;
       const totalCosts = costsResult.data?.reduce((sum: number, item: any) => sum + (item.total_amount || 0), 0) || 0;
-      const totalExpenses = expensesResult.data?.reduce((sum: number, item: any) => sum + (item.amount || 0), 0) || 0;
-      const profit = totalRevenue - totalCosts - totalExpenses;
+      const profit = totalRevenue - totalCosts;
 
       setReportData({
-        totalProducts: productsResult.count || 0,
+        totalProducts: (productsResult.count || 0) + (manufacturedProductsResult.count || 0),
         totalInventory: inventoryResult.count || 0,
         totalSales: salesResult.count || 0,
         totalPurchases: purchasesResult.count || 0,
         totalManufacturing: manufacturingResult.count || 0,
         totalEmployees: employeesResult.count || 0,
-        lowStockItems: lowStockData?.length || 0,
+        lowStockItems,
         totalRevenue,
         totalCosts,
         profit
